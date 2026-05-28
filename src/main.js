@@ -85,15 +85,26 @@ async function initWindow() {
 }
 
 // ================= MAIN VIEW LOGIC =================
+function getSortedCards() {
+  let sorted = [...allCards];
+  if (currentSortMode === 'time') {
+    sorted.sort((a, b) => b.create_time - a.create_time);
+  } else if (currentSortMode === 'depth') {
+    sorted.sort((a, b) => b.memory_depth - a.memory_depth || b.create_time - a.create_time);
+  }
+  return sorted;
+}
+
 async function initMainView() {
   stopCountdownTimer();
   await loadCards();
   await loadTimerConfig();
   startCountdownTimer();
   
-  // Select first card if available
+  // Select first card if available (top-most in sorted list)
   if (allCards.length > 0 && !selectedCardId) {
-    selectCard(allCards[0].id);
+    const sorted = getSortedCards();
+    selectCard(sorted[0].id);
   } else if (selectedCardId) {
     selectCard(selectedCardId);
   } else {
@@ -115,20 +126,12 @@ function renderCardsList() {
   
   listEl.innerHTML = '';
   
-  // Filter
-  let filtered = allCards.filter(card => {
+  // Sort and then Filter
+  const sorted = getSortedCards();
+  let filtered = sorted.filter(card => {
     const q = searchQuery.toLowerCase();
     return card.front.toLowerCase().includes(q) || card.back.toLowerCase().includes(q);
   });
-  
-  // Sort
-  if (currentSortMode === 'time') {
-    // Sort by create time descending
-    filtered.sort((a, b) => b.create_time - a.create_time);
-  } else if (currentSortMode === 'depth') {
-    // Sort by memory depth descending, then time descending
-    filtered.sort((a, b) => b.memory_depth - a.memory_depth || b.create_time - a.create_time);
-  }
   
   filtered.forEach(card => {
     const li = document.createElement('li');
@@ -321,9 +324,10 @@ async function deleteSelectedCard() {
       selectedCardId = null;
       await loadCards();
       
-      // Select first
+      // Select first (top-most in sorted list)
       if (allCards.length > 0) {
-        selectCard(allCards[0].id);
+        const sorted = getSortedCards();
+        selectCard(sorted[0].id);
       } else {
         renderCardDetail(null);
       }
