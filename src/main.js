@@ -112,7 +112,6 @@ async function loadCards() {
 
 function renderCardsList() {
   const listEl = document.getElementById('cards-list');
-  const emptyIndicator = document.getElementById('empty-list-indicator');
   
   listEl.innerHTML = '';
   
@@ -129,13 +128,6 @@ function renderCardsList() {
   } else if (currentSortMode === 'depth') {
     // Sort by memory depth descending, then time descending
     filtered.sort((a, b) => b.memory_depth - a.memory_depth || b.create_time - a.create_time);
-  }
-  
-  if (filtered.length === 0) {
-    emptyIndicator.classList.remove('hidden');
-    return;
-  } else {
-    emptyIndicator.classList.add('hidden');
   }
   
   filtered.forEach(card => {
