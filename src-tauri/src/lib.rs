@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use tauri::{State, Manager, AppHandle, Emitter, WebviewWindowBuilder, WebviewUrl};
 use chrono::Local;
 use tokio::time::{sleep, Duration};
-use rand::prelude::IndexedRandom;
 
 fn default_true() -> bool {
     true
@@ -118,6 +117,7 @@ pub struct AppStateInner {
     pub next_trigger_time: i64,
     pub db: DbManager,
     pub programmatic_close: bool, // true when close is triggered by code, not by user
+    pub last_reviewed_id: Option<String>,
 }
 
 pub struct AppState {
@@ -227,6 +227,7 @@ fn delete_card(state: State<'_, AppState>, app: AppHandle, id: String) -> Result
 #[tauri::command]
 fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembered: bool) -> Result<Card, String> {
     let mut inner = state.inner.lock().unwrap();
+    inner.last_reviewed_id = Some(id.clone());
     
     let cloned_card = if let Some(card) = inner.cards.iter_mut().find(|c| c.id == id) {
         card.popup_count += 1;
@@ -256,22 +257,33 @@ fn get_reminder_card(state: State<'_, AppState>) -> Option<Card> {
         return None;
     }
     
-    // Check if all cards have 100% memory depth
-    let all_mastered = inner.cards.iter().all(|c| c.memory_depth >= 100);
-    
-    if all_mastered {
-        // All cards are at 100%, pick a random one
-        let mut rng = rand::rng();
-        inner.cards.choose(&mut rng).cloned()
+    // Filter out the last reviewed card if there are multiple cards
+    let available_cards: Vec<&Card> = if inner.cards.len() > 1 {
+        if let Some(ref last_id) = inner.last_reviewed_id {
+            inner.cards.iter().filter(|c| c.id != *last_id).collect()
+        } else {
+            inner.cards.iter().collect()
+        }
     } else {
-        // Sort: memory_depth ASC, then create_time ASC
-        let mut sorted = inner.cards.clone();
-        sorted.sort_by(|a, b| {
-            a.memory_depth.cmp(&b.memory_depth)
-                .then(a.create_time.cmp(&b.create_time))
-        });
-        Some(sorted[0].clone())
+        inner.cards.iter().collect()
+    };
+    
+    // Calculate total weight of available cards (weight = 101 - memory_depth)
+    let total_weight: u32 = available_cards.iter().map(|c| 101 - c.memory_depth).sum();
+    
+    // Choose a random value in range [0, total_weight)
+    let mut random_val = rand::random_range(0..total_weight);
+    
+    // Select the card corresponding to the random value
+    for card in &available_cards {
+        let weight = 101 - card.memory_depth;
+        if random_val < weight {
+            return Some((*card).clone());
+        }
+        random_val -= weight;
     }
+    
+    available_cards.last().map(|c| (*c).clone())
 }
 
 #[tauri::command]
@@ -350,6 +362,7 @@ pub fn run() {
                     next_trigger_time,
                     db,
                     programmatic_close: false,
+                    last_reviewed_id: None,
                 }),
             });
             
