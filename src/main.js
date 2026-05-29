@@ -54,6 +54,8 @@ async function initWindow() {
     if (label === 'reminder') {
       document.body.className = 'route-reminder';
       await initReminderView();
+      // Window was created hidden to avoid flash; show it now
+      await invoke('show_reminder_window');
     } else {
       document.body.className = 'route-main';
       await initMainView();

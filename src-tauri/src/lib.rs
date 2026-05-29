@@ -137,14 +137,15 @@ fn trigger_popup(app: &AppHandle) -> Result<(), String> {
             "reminder",
             WebviewUrl::App("index.html".into())
         )
-        .title("记忆卡片提醒")
+        .title("复习")
         .inner_size(460.0, 320.0)
         .center()
         .always_on_top(true)
         .resizable(false)
         .minimizable(false)
         .maximizable(false)
-        .decorations(true);
+        .decorations(true)
+        .visible(false);
         
         let _window = builder.build().map_err(|e| e.to_string())?;
     }
@@ -327,6 +328,15 @@ async fn close_reminder_window(state: State<'_, AppState>, app: AppHandle) -> Re
     Ok(())
 }
 
+#[tauri::command]
+async fn show_reminder_window(app: AppHandle) -> Result<(), String> {
+    if let Some(reminder) = app.get_webview_window("reminder") {
+        let _ = reminder.show();
+        let _ = reminder.set_focus();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -431,7 +441,8 @@ pub fn run() {
             set_timer_config,
             get_next_trigger_time,
             get_window_label,
-            close_reminder_window
+            close_reminder_window,
+            show_reminder_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
