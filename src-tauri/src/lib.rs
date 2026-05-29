@@ -144,10 +144,10 @@ fn trigger_popup(app: &AppHandle) -> Result<(), String> {
         .resizable(false)
         .minimizable(false)
         .maximizable(false)
-        .decorations(true)
-        .visible(false);
+        .decorations(true);
         
-        let _window = builder.build().map_err(|e| e.to_string())?;
+        let window = builder.build().map_err(|e| e.to_string())?;
+        let _ = window.set_background_color(Some(tauri::window::Color(9, 13, 22, 255)));
     }
     
     if let Some(main) = app.get_webview_window("main") {
@@ -328,16 +328,6 @@ async fn close_reminder_window(state: State<'_, AppState>, app: AppHandle) -> Re
     Ok(())
 }
 
-#[tauri::command]
-fn show_reminder_window(app: AppHandle) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(reminder) = app_clone.get_webview_window("reminder") {
-            let _ = reminder.show();
-            let _ = reminder.set_focus();
-        }
-    }).map_err(|e| e.to_string())
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -443,8 +433,7 @@ pub fn run() {
             set_timer_config,
             get_next_trigger_time,
             get_window_label,
-            close_reminder_window,
-            show_reminder_window
+            close_reminder_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

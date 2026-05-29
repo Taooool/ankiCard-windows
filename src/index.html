@@ -13,6 +13,21 @@
   </head>
 
   <body>
+    <!-- Synchronous routing script to avoid visual flash -->
+    <script>
+      try {
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const label = getCurrentWindow().label;
+        if (label === 'reminder') {
+          document.body.className = 'route-reminder';
+        } else {
+          document.body.className = 'route-main';
+        }
+      } catch (e) {
+        console.error('Synchronous routing failed:', e);
+        document.body.className = 'route-main';
+      }
+    </script>
     
     <!-- ================= MAIN VIEW ================= -->
     <div id="main-view" class="view-container">
