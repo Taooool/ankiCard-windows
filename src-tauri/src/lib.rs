@@ -10,8 +10,8 @@ fn default_true() -> bool {
     true
 }
 
-fn default_interval() -> u32 {
-    10
+fn default_interval_secs() -> u32 {
+    600 // 10 minutes * 60 seconds
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -30,8 +30,8 @@ pub struct Card {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
-    #[serde(default = "default_interval")]
-    pub interval_mins: u32,       // Timer interval
+    #[serde(default = "default_interval_secs")]
+    pub interval_secs: u32,       // Timer interval in seconds
     #[serde(default = "default_true")]
     pub is_enabled: bool,         // Is auto-reminder enabled
     #[serde(default)]
@@ -43,7 +43,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            interval_mins: 10,
+            interval_secs: 600,
             is_enabled: true,
             last_round_date: "".to_string(),
             reviewed_card_ids: Vec::new(),
@@ -325,20 +325,39 @@ fn get_next_trigger_time(state: State<'_, AppState>) -> i64 {
 fn set_timer_config(
     state: State<'_, AppState>,
     app: AppHandle,
-    interval_mins: u32,
+    interval_secs: u32,
     is_enabled: bool,
 ) -> Result<AppConfig, String> {
     let mut inner = state.inner.lock().unwrap();
-    inner.config.interval_mins = interval_mins;
+    inner.config.interval_secs = interval_secs;
     inner.config.is_enabled = is_enabled;
     
     let now = Local::now().timestamp_millis();
-    inner.next_trigger_time = now + (interval_mins as i64) * 60 * 1000;
+    inner.next_trigger_time = now + (interval_secs as i64) * 1000;
     
     inner.db.save_config(&inner.config)?;
     
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.emit("config-updated", inner.config.clone());
+    }
+    
+    Ok(inner.config.clone())
+}
+
+#[tauri::command]
+async fn start_new_round(state: State<'_, AppState>, app: AppHandle) -> Result<AppConfig, String> {
+    let mut inner = state.inner.lock().unwrap();
+    inner.config.reviewed_card_ids.clear();
+    
+    // Reset trigger timer to start a fresh countdown for the new round
+    let now = Local::now().timestamp_millis();
+    inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
+    
+    inner.db.save_config(&inner.config)?;
+    
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.emit("config-updated", inner.config.clone());
+        let _ = main.emit("cards-updated", ());
     }
     
     Ok(inner.config.clone())
@@ -384,7 +403,7 @@ pub fn run() {
             }
             
             let now = Local::now().timestamp_millis();
-            let next_trigger_time = now + (config.interval_mins as i64) * 60 * 1000;
+            let next_trigger_time = now + (config.interval_secs as i64) * 1000;
             
             app.manage(AppState {
                 inner: Mutex::new(AppStateInner {
@@ -424,7 +443,7 @@ pub fn run() {
                             let _ = inner.db.save_config(&inner.config);
                             
                             // Reset trigger timer to start fresh
-                            inner.next_trigger_time = now + (inner.config.interval_mins as i64) * 60 * 1000;
+                            inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
                             
                             if inner.config.is_enabled {
                                 trigger_needed = true;
@@ -440,7 +459,7 @@ pub fn run() {
                         // 2. Check for periodic timer trigger
                         if inner.config.is_enabled && now >= inner.next_trigger_time {
                             trigger_needed = true;
-                            inner.next_trigger_time = now + (inner.config.interval_mins as i64) * 60 * 1000;
+                            inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
                             
                             // Emit trigger updates to update countdown display
                             if let Some(main) = app_handle.get_webview_window("main") {
@@ -470,7 +489,8 @@ pub fn run() {
             get_next_trigger_time,
             trigger_reminder_manually,
             get_window_label,
-            close_reminder_window
+            close_reminder_window,
+            start_new_round
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

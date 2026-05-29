@@ -196,12 +196,26 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function updateTimerUIFromSeconds(totalSecs) {
+  const intervalInput = document.getElementById('timer-interval-input');
+  const unitSelect = document.getElementById('timer-unit-select');
+  if (!intervalInput || !unitSelect) return;
+  
+  if (totalSecs % 60 === 0) {
+    unitSelect.value = 'mins';
+    intervalInput.value = totalSecs / 60;
+  } else {
+    unitSelect.value = 'secs';
+    intervalInput.value = totalSecs;
+  }
+}
+
 // ================= TIMER CONTROL LOGIC =================
 async function loadTimerConfig() {
   try {
     appConfig = await invoke('get_timer_config');
     document.getElementById('timer-toggle-switch').checked = appConfig.is_enabled;
-    document.getElementById('timer-interval-input').value = appConfig.interval_mins;
+    updateTimerUIFromSeconds(appConfig.interval_secs);
     updateCountdownUI();
   } catch (err) {
     console.error('Failed to load config:', err);
@@ -210,10 +224,12 @@ async function loadTimerConfig() {
 
 async function saveTimerConfig() {
   const isEnabled = document.getElementById('timer-toggle-switch').checked;
-  const intervalMins = parseInt(document.getElementById('timer-interval-input').value) || 10;
+  const val = parseInt(document.getElementById('timer-interval-input').value) || 10;
+  const unit = document.getElementById('timer-unit-select').value;
+  const intervalSecs = val * (unit === 'mins' ? 60 : 1);
   
   try {
-    appConfig = await invoke('set_timer_config', { intervalMins, isEnabled });
+    appConfig = await invoke('set_timer_config', { intervalSecs, isEnabled });
     updateCountdownUI();
   } catch (err) {
     console.error('Failed to save config:', err);
@@ -372,7 +388,7 @@ function renderNextReminderCard() {
     activeState.classList.remove('active');
     successState.classList.add('active');
     
-    document.getElementById('success-desc').textContent = "今日复习已全部完成！保持优秀的学习节奏！";
+    document.getElementById('success-desc').textContent = "是否开启新一轮复习";
     return;
   }
   
@@ -410,19 +426,26 @@ async function handleReviewResult(remembered) {
   }
 }
 
-async function triggerRandomReview() {
+async function handleStartNewRound() {
   try {
-    const card = await invoke('get_random_card');
-    if (card) {
-      reminderQueue = [card];
-      document.getElementById('reminder-success-state').classList.remove('active');
-      document.getElementById('reminder-active-state').classList.add('active');
-      renderNextReminderCard();
-    } else {
-      alert('数据库中没有卡片，请在主窗口添加卡片。');
-    }
+    // Start new round in background and close the window immediately
+    invoke('start_new_round').catch(err => console.error('Failed to start new round:', err));
+    await closeWindow();
   } catch (err) {
-    console.error('Random review failed:', err);
+    console.error('Failed to start new round:', err);
+  }
+}
+
+async function handleDeclineNewRound() {
+  try {
+    // Disable timer config (is_enabled = false)
+    const intervalSecs = appConfig ? appConfig.interval_secs : 600;
+    invoke('set_timer_config', { intervalSecs, isEnabled: false }).catch(err => console.error(err));
+    
+    // Close the window immediately
+    await closeWindow();
+  } catch (err) {
+    console.error('Failed to decline new round:', err);
   }
 }
 
@@ -482,6 +505,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Timer configs
   document.getElementById('timer-toggle-switch').addEventListener('change', saveTimerConfig);
   document.getElementById('timer-interval-input').addEventListener('change', saveTimerConfig);
+  document.getElementById('timer-unit-select').addEventListener('change', saveTimerConfig);
   document.getElementById('timer-interval-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       saveTimerConfig();
@@ -502,8 +526,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('view-answer-btn').addEventListener('click', revealAnswer);
   document.getElementById('remember-btn').addEventListener('click', () => handleReviewResult(true));
   document.getElementById('forget-btn').addEventListener('click', () => handleReviewResult(false));
-  document.getElementById('random-review-btn').addEventListener('click', triggerRandomReview);
-  document.getElementById('close-popup-btn').addEventListener('click', closeWindow);
+  document.getElementById('start-new-round-yes-btn').addEventListener('click', handleStartNewRound);
+  document.getElementById('start-new-round-no-btn').addEventListener('click', handleDeclineNewRound);
   
   // ----- LISTEN TO TAURI GLOBAL EVENTS -----
   
@@ -520,7 +544,7 @@ window.addEventListener('DOMContentLoaded', () => {
   listen('config-updated', (event) => {
     appConfig = event.payload;
     document.getElementById('timer-toggle-switch').checked = appConfig.is_enabled;
-    document.getElementById('timer-interval-input').value = appConfig.interval_mins;
+    updateTimerUIFromSeconds(appConfig.interval_secs);
     updateCountdownUI();
   });
   

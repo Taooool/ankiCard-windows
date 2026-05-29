@@ -70,8 +70,11 @@
             <div class="timer-input-row">
               <span class="timer-label">提醒间隔:</span>
               <div class="number-input-wrap">
-                <input type="number" id="timer-interval-input" min="1" max="1440" value="10" />
-                <span class="unit">分钟</span>
+                <input type="number" id="timer-interval-input" min="1" value="10" style="width: 55px;" />
+                <select id="timer-unit-select" class="unit-select">
+                  <option value="mins">分钟</option>
+                  <option value="secs">秒</option>
+                </select>
               </div>
             </div>
             
@@ -254,15 +257,23 @@
               <path d="M12 2a6 6 0 0 1 6 6v5a6 6 0 0 1-6 6 6 6 0 0 1-6-6V8a6 6 0 0 1 6-6z" />
             </svg>
             <h2>本轮复习已完成！</h2>
-            <p id="success-desc">所有到期的记忆卡片均已处理完毕，保持优秀的学习节奏！</p>
-            <div class="success-footer-actions">
-              <button id="random-review-btn" class="btn-secondary">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+            <p id="success-desc" style="margin-bottom: 24px; font-weight: 500; font-size: 15px;">是否开启新一轮复习</p>
+            <div class="success-footer-actions split-buttons" style="display: flex; flex-direction: column; gap: 12px; align-items: center; width: 100%; max-width: 260px; margin: 0 auto;">
+              <button id="start-new-round-yes-btn" class="btn-action btn-remember" style="width: 100%; justify-content: center; height: 42px; font-size: 15px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="9 11 11 13 15 9" />
                 </svg>
-                随机抽取复习
+                是
               </button>
-              <button id="close-popup-btn" class="btn-primary-gradient">关闭窗口</button>
+              <button id="start-new-round-no-btn" class="btn-action btn-forget" style="width: 100%; justify-content: center; height: 42px; font-size: 15px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+                否
+              </button>
             </div>
           </div>
         </div>
