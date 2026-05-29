@@ -38,8 +38,13 @@ function handleRoute() {
   
   if (hash === '#/reminder') {
     window.currentWindowLabel = 'reminder';
-    initReminderView().then(() => {
+    initReminderView().then(async () => {
       document.body.className = 'route-reminder';
+      try {
+        await invoke('show_reminder_window');
+      } catch (e) {
+        console.error('Failed to show window:', e);
+      }
     });
   } else {
     window.currentWindowLabel = 'main';
@@ -56,6 +61,7 @@ async function initWindow() {
     if (label === 'reminder') {
       await initReminderView();
       document.body.className = 'route-reminder';
+      await invoke('show_reminder_window');
     } else {
       await initMainView();
       document.body.className = 'route-main';
