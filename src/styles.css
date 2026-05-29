@@ -294,14 +294,7 @@ body.route-reminder #reminder-view {
 .depth-medium { background: rgba(99, 102, 241, 0.15); color: var(--color-primary); border: 1px solid rgba(99, 102, 241, 0.3); }
 .depth-high { background: rgba(16, 185, 129, 0.15); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.3); }
 
-.card-item-due {
-  color: var(--text-muted);
-}
-.card-item-due.due-now {
-  color: var(--color-danger);
-  font-weight: 600;
-  text-shadow: 0 0 8px rgba(244, 63, 94, 0.2);
-}
+
 
 #empty-list-indicator {
   display: flex;
@@ -477,30 +470,6 @@ body:has(#timer-toggle-switch:not(:checked)) .countdown-bullet {
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
-.round-count-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-  border-top: 1px dashed rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
-  margin-top: 4px;
-}
-
-.round-count-row strong {
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
-.icon-round {
-  width: 14px;
-  height: 14px;
-  color: var(--color-primary);
-  flex-shrink: 0;
-  filter: drop-shadow(0 0 4px var(--color-primary-glow));
-}
-
 /* Button UI */
 button {
   cursor: pointer;
@@ -647,20 +616,7 @@ button {
   box-shadow: 0 0 6px var(--color-success);
 }
 
-.status-reviewed {
-  color: var(--color-success) !important;
-  font-weight: 600;
-}
 
-.status-pending {
-  color: var(--color-warning) !important;
-  font-weight: 600;
-}
-
-.card-item-due.reviewed-done {
-  color: var(--color-success);
-  font-weight: 500;
-}
 
 .action-buttons {
   display: flex;
@@ -1030,59 +986,6 @@ button {
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
 }
 
-/* Success / Completion Screen */
-#reminder-success-state {
-  justify-content: center;
-  align-items: center;
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-glow);
-  padding: 30px;
-}
-
-.success-screen-content {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 320px;
-}
-
-.success-trophy {
-  width: 64px;
-  height: 64px;
-  color: var(--color-success);
-  margin-bottom: 20px;
-  filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.4));
-  animation: float-trophy 3s ease-in-out infinite;
-}
-
-@keyframes float-trophy {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-
-.success-screen-content h2 {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-.success-screen-content p {
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 20px;
-}
-
-.success-footer-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-}
 
 /* ================= MODAL WINDOW DIALOG ================= */
 .modal-overlay {

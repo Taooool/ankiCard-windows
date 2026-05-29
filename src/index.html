@@ -82,13 +82,6 @@
               <span class="countdown-bullet"></span>
               <span id="countdown-status">正在计算下次提醒时间...</span>
             </div>
-            
-            <div class="round-count-row">
-              <svg class="icon-round" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
-              <span>今日复习轮次: <strong id="sidebar-round-count">1</strong></span>
-            </div>
             </div>
         </footer>
       </aside>
@@ -156,7 +149,6 @@
 
           <div class="detail-footer">
             <span class="time-meta">创建于: <span id="detail-create-time">--</span></span>
-            <span class="time-meta">今日状态: <span id="detail-status-val">--</span></span>
           </div>
         </div>
       </main>
@@ -245,39 +237,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Success/Empty Review State -->
-        <div id="reminder-success-state" class="reminder-state">
-          <div class="success-screen-content">
-            <svg class="success-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-              <path d="M4 22h16" />
-              <path d="M10 14.66V17c0 .55-.45 1-1 1H4v2h16v-2h-5c-.55 0-1-.45-1-1v-2.34" />
-              <path d="M12 2a6 6 0 0 1 6 6v5a6 6 0 0 1-6 6 6 6 0 0 1-6-6V8a6 6 0 0 1 6-6z" />
-            </svg>
-            <h2>本轮复习已完成！</h2>
-            <p id="success-desc" style="margin-bottom: 24px; font-weight: 500; font-size: 15px;">是否开启新一轮复习</p>
-            <div class="success-footer-actions split-buttons" style="display: flex; flex-direction: column; gap: 12px; align-items: center; width: 100%; max-width: 260px; margin: 0 auto;">
-              <button id="start-new-round-yes-btn" class="btn-action btn-remember" style="width: 100%; justify-content: center; height: 42px; font-size: 15px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="9 11 11 13 15 9" />
-                </svg>
-                是
-              </button>
-              <button id="start-new-round-no-btn" class="btn-action btn-forget" style="width: 100%; justify-content: center; height: 42px; font-size: 15px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-                否
-              </button>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
 

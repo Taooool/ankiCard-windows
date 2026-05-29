@@ -7,10 +7,9 @@ let allCards = [];
 let selectedCardId = null;
 let currentSortMode = 'time'; // 'time' or 'depth'
 let searchQuery = '';
-let reminderQueue = [];
 let currentReminderCard = null;
 let countdownTimerId = null;
-let appConfig = { is_enabled: true, last_round_date: '', reviewed_card_ids: [], today_round_count: 1 };
+let appConfig = { is_enabled: true };
 
 // ================= UTILITY FUNCTIONS =================
 function formatDate(timestamp) {
@@ -22,15 +21,6 @@ function formatDate(timestamp) {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
-
-function getCardDueInfo(card) {
-  const isReviewed = appConfig && appConfig.reviewed_card_ids && appConfig.reviewed_card_ids.includes(card.id);
-  if (isReviewed) {
-    return { text: '已复习', isDue: false };
-  } else {
-    return { text: '待复习', isDue: true };
-  }
 }
 
 function getDepthBadgeClass(depth) {
@@ -128,15 +118,12 @@ function renderCardsList() {
     li.className = `card-item ${card.id === selectedCardId ? 'selected' : ''}`;
     li.dataset.id = card.id;
     
-    const dueInfo = getCardDueInfo(card);
-    const dueClass = dueInfo.isDue ? 'card-item-due due-now' : 'card-item-due reviewed-done';
     const depthClass = getDepthBadgeClass(card.memory_depth);
     
     li.innerHTML = `
       <div class="card-item-title">${escapeHtml(card.front)}</div>
       <div class="card-item-meta">
         <span class="badge-depth ${depthClass}">深度: ${card.memory_depth}%</span>
-        <span class="${dueClass}">${dueInfo.text}</span>
       </div>
     `;
     
@@ -181,12 +168,7 @@ function renderCardDetail(card) {
   document.getElementById('detail-back-text').textContent = card.back;
   document.getElementById('detail-create-time').textContent = formatDate(card.create_time);
   
-  const dueInfo = getCardDueInfo(card);
-  const statusEl = document.getElementById('detail-status-val');
-  if (statusEl) {
-    statusEl.textContent = dueInfo.text;
-    statusEl.className = dueInfo.isDue ? 'status-pending' : 'status-reviewed';
-  }
+
 }
 
 // Escape HTML utility
@@ -237,11 +219,6 @@ async function saveTimerConfig() {
 }
 
 async function updateCountdownUI() {
-  const roundCountEl = document.getElementById('sidebar-round-count');
-  if (roundCountEl && appConfig && typeof appConfig.today_round_count !== 'undefined') {
-    roundCountEl.textContent = appConfig.today_round_count;
-  }
-
   const isEnabled = document.getElementById('timer-toggle-switch').checked;
   const statusEl = document.getElementById('countdown-status');
   
@@ -254,9 +231,7 @@ async function updateCountdownUI() {
     const nextTrigger = await invoke('get_next_trigger_time');
     
     if (nextTrigger === 0) {
-      const pendingCount = allCards.filter(c => !appConfig.reviewed_card_ids.includes(c.id)).length;
-      const statusPrefix = pendingCount > 0 ? `待复习: ${pendingCount}张` : '今日已完成';
-      statusEl.textContent = `${statusPrefix} | 复习进行中...`;
+      statusEl.textContent = '复习进行中...';
       return;
     }
     
@@ -269,9 +244,7 @@ async function updateCountdownUI() {
       const mins = Math.floor(totalSecs / 60);
       const secs = totalSecs % 60;
       
-      const pendingCount = allCards.filter(c => !appConfig.reviewed_card_ids.includes(c.id)).length;
-      const statusPrefix = pendingCount > 0 ? `待复习: ${pendingCount}张` : '今日已完成';
-      statusEl.textContent = `${statusPrefix} | 倒计时: ${mins}分${secs}秒`;
+      statusEl.textContent = `倒计时: ${mins}分${secs}秒`;
     }
   } catch (err) {
     statusEl.textContent = '同步下次提醒时间失败';
@@ -368,50 +341,36 @@ async function deleteSelectedCard() {
 async function initReminderView() {
   // Clear any flips
   document.getElementById('flip-card-inner').classList.remove('flipped');
-  await loadReminderQueue();
-  renderNextReminderCard();
+  await loadNextReminderCard();
+  renderReminderCard();
 }
 
-async function loadReminderQueue() {
+async function loadNextReminderCard() {
   try {
-    const cards = await invoke('get_cards');
-    appConfig = await invoke('get_timer_config');
-    
-    // Filter cards not reviewed in current round
-    reminderQueue = cards.filter(c => !appConfig.reviewed_card_ids.includes(c.id));
-    
-    // Sort: memory_depth ASC, then create_time ASC
-    reminderQueue.sort((a, b) => {
-      return a.memory_depth - b.memory_depth || a.create_time - b.create_time;
-    });
+    currentReminderCard = await invoke('get_reminder_card');
   } catch (err) {
-    console.error('Failed to load reminder cards:', err);
+    console.error('Failed to load reminder card:', err);
+    currentReminderCard = null;
   }
 }
 
-function renderNextReminderCard() {
+function renderReminderCard() {
   const activeState = document.getElementById('reminder-active-state');
-  const successState = document.getElementById('reminder-success-state');
   const innerCard = document.getElementById('flip-card-inner');
   
   // Reset Card flip before switching content
   innerCard.classList.remove('flipped');
   
-  if (reminderQueue.length === 0) {
-    activeState.classList.remove('active');
-    successState.classList.add('active');
-    
-    document.getElementById('success-desc').textContent = "是否开启新一轮复习";
+  if (!currentReminderCard) {
+    // No cards at all — just close the window
+    closeWindow();
     return;
   }
   
   activeState.classList.add('active');
-  successState.classList.remove('active');
-  
-  currentReminderCard = reminderQueue[0];
   
   // Fill details
-  document.getElementById('popup-queue-badge').textContent = `剩余 ${reminderQueue.length} 张`;
+  document.getElementById('popup-queue-badge').textContent = `共 ${allCards.length || '?'} 张`;
   document.getElementById('popup-depth-badge').textContent = `深度 ${currentReminderCard.memory_depth}%`;
   document.getElementById('popup-front-text').textContent = currentReminderCard.front;
   
@@ -439,28 +398,6 @@ async function handleReviewResult(remembered) {
   }
 }
 
-async function handleStartNewRound() {
-  try {
-    // Start new round in background and close the window immediately
-    invoke('start_new_round').catch(err => console.error('Failed to start new round:', err));
-    await closeWindow();
-  } catch (err) {
-    console.error('Failed to start new round:', err);
-  }
-}
-
-async function handleDeclineNewRound() {
-  try {
-    // Disable timer config (is_enabled = false)
-    const intervalSecs = appConfig ? appConfig.interval_secs : 600;
-    invoke('set_timer_config', { intervalSecs, isEnabled: false }).catch(err => console.error(err));
-    
-    // Close the window immediately
-    await closeWindow();
-  } catch (err) {
-    console.error('Failed to decline new round:', err);
-  }
-}
 
 async function closeWindow() {
   try {
@@ -530,18 +467,12 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('view-answer-btn').addEventListener('click', revealAnswer);
   document.getElementById('remember-btn').addEventListener('click', () => handleReviewResult(true));
   document.getElementById('forget-btn').addEventListener('click', () => handleReviewResult(false));
-  document.getElementById('start-new-round-yes-btn').addEventListener('click', handleStartNewRound);
-  document.getElementById('start-new-round-no-btn').addEventListener('click', handleDeclineNewRound);
   
   // ----- LISTEN TO TAURI GLOBAL EVENTS -----
   
   // Sync cards database updates
   listen('cards-updated', () => {
     loadCards();
-    // If in reminder view, update the queue count
-    if (window.currentWindowLabel === 'reminder') {
-      loadReminderQueue().then(renderNextReminderCard);
-    }
   });
   
   // Sync timer configurations

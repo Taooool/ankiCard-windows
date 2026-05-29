@@ -3,8 +3,9 @@ use std::sync::Mutex;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{State, Manager, AppHandle, Emitter, WebviewWindowBuilder, WebviewUrl};
-use chrono::{Local};
+use chrono::Local;
 use tokio::time::{sleep, Duration};
+use rand::prelude::IndexedRandom;
 
 fn default_true() -> bool {
     true
@@ -28,22 +29,12 @@ pub struct Card {
     pub remember_count: u32,       // remember count
 }
 
-fn default_today_round_count() -> u32 {
-    1
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
     #[serde(default = "default_interval_secs")]
     pub interval_secs: u32,       // Timer interval in seconds
     #[serde(default = "default_true")]
     pub is_enabled: bool,         // Is auto-reminder enabled
-    #[serde(default)]
-    pub last_round_date: String,  // Format: YYYY-MM-DD
-    #[serde(default)]
-    pub reviewed_card_ids: Vec<String>, // Card IDs reviewed in the current round
-    #[serde(default = "default_today_round_count")]
-    pub today_round_count: u32,   // Today's review round count
 }
 
 impl Default for AppConfig {
@@ -51,9 +42,6 @@ impl Default for AppConfig {
         Self {
             interval_secs: 600,
             is_enabled: true,
-            last_round_date: "".to_string(),
-            reviewed_card_ids: Vec::new(),
-            today_round_count: 1,
         }
     }
 }
@@ -221,19 +209,11 @@ fn delete_card(state: State<'_, AppState>, app: AppHandle, id: String) -> Result
     let len_before = inner.cards.len();
     inner.cards.retain(|c| c.id != id);
     
-    // Also remove from reviewed list if deleted
-    let reviewed_len_before = inner.config.reviewed_card_ids.len();
-    inner.config.reviewed_card_ids.retain(|x| x != &id);
-    
     if inner.cards.len() < len_before {
         inner.db.save_cards(&inner.cards)?;
-        if inner.config.reviewed_card_ids.len() < reviewed_len_before {
-            let _ = inner.db.save_config(&inner.config);
-        }
         
         if let Some(main) = app.get_webview_window("main") {
             let _ = main.emit("cards-updated", ());
-            let _ = main.emit("config-updated", inner.config.clone());
         }
         
         Ok(())
@@ -257,19 +237,10 @@ fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembere
         return Err("Card not found".into());
     };
     
-    if !inner.config.reviewed_card_ids.contains(&id) {
-        inner.config.reviewed_card_ids.push(id.clone());
-    }
-    
     inner.db.save_cards(&inner.cards)?;
-    inner.db.save_config(&inner.config)?;
     
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.emit("cards-updated", ());
-        let _ = main.emit("config-updated", inner.config.clone());
-    }
-    if let Some(reminder) = app.get_webview_window("reminder") {
-        let _ = reminder.emit("cards-updated", ());
     }
     
     Ok(cloned_card)
@@ -279,40 +250,25 @@ fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembere
 fn get_reminder_card(state: State<'_, AppState>) -> Option<Card> {
     let inner = state.inner.lock().unwrap();
     
-    // Select cards that are NOT reviewed yet in the current daily round
-    let mut pending_cards: Vec<Card> = inner.cards.iter()
-        .filter(|c| !inner.config.reviewed_card_ids.contains(&c.id))
-        .cloned()
-        .collect();
-    
-    if pending_cards.is_empty() {
-        None
-    } else {
-        // Sort:
-        // 1. memory_depth ASC
-        // 2. create_time ASC
-        pending_cards.sort_by(|a, b| {
-            a.memory_depth.cmp(&b.memory_depth)
-                .then(a.create_time.cmp(&b.create_time))
-        });
-        
-        Some(pending_cards[0].clone())
-    }
-}
-
-#[tauri::command]
-fn get_random_card(state: State<'_, AppState>) -> Option<Card> {
-    let inner = state.inner.lock().unwrap();
     if inner.cards.is_empty() {
-        None
+        return None;
+    }
+    
+    // Check if all cards have 100% memory depth
+    let all_mastered = inner.cards.iter().all(|c| c.memory_depth >= 100);
+    
+    if all_mastered {
+        // All cards are at 100%, pick a random one
+        let mut rng = rand::rng();
+        inner.cards.choose(&mut rng).cloned()
     } else {
-        // Prioritize lower memory depth, then sort by create time
-        let mut cards = inner.cards.clone();
-        cards.sort_by(|a, b| {
+        // Sort: memory_depth ASC, then create_time ASC
+        let mut sorted = inner.cards.clone();
+        sorted.sort_by(|a, b| {
             a.memory_depth.cmp(&b.memory_depth)
                 .then(a.create_time.cmp(&b.create_time))
         });
-        Some(cards[0].clone())
+        Some(sorted[0].clone())
     }
 }
 
@@ -351,25 +307,6 @@ fn set_timer_config(
     Ok(inner.config.clone())
 }
 
-#[tauri::command]
-async fn start_new_round(state: State<'_, AppState>, app: AppHandle) -> Result<AppConfig, String> {
-    let mut inner = state.inner.lock().unwrap();
-    inner.config.reviewed_card_ids.clear();
-    inner.config.today_round_count += 1;
-    
-    // Reset trigger timer to start a fresh countdown for the new round
-    let now = Local::now().timestamp_millis();
-    inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
-    
-    inner.db.save_config(&inner.config)?;
-    
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.emit("config-updated", inner.config.clone());
-        let _ = main.emit("cards-updated", ());
-    }
-    
-    Ok(inner.config.clone())
-}
 
 
 #[tauri::command]
@@ -394,18 +331,7 @@ pub fn run() {
             
             let db = DbManager::new(&app_handle);
             let cards = db.load_cards();
-            let mut config = db.load_config();
-            
-            // Check if it's a new day on startup
-            let today = Local::now().format("%Y-%m-%d").to_string();
-            let mut new_day_triggered = false;
-            if config.last_round_date != today {
-                config.last_round_date = today;
-                config.reviewed_card_ids.clear();
-                config.today_round_count = 1;
-                let _ = db.save_config(&config);
-                new_day_triggered = true;
-            }
+            let config = db.load_config();
             
             let now = Local::now().timestamp_millis();
             let next_trigger_time = now + (config.interval_secs as i64) * 1000;
@@ -419,17 +345,6 @@ pub fn run() {
                 }),
             });
             
-            if new_day_triggered {
-                let state = app_handle.state::<AppState>();
-                let config_enabled = {
-                    let inner = state.inner.lock().unwrap();
-                    inner.config.is_enabled
-                };
-                if config_enabled {
-                    let _ = trigger_popup(&app_handle);
-                }
-            }
-            
             tauri::async_runtime::spawn(async move {
                 loop {
                     sleep(Duration::from_secs(1)).await;
@@ -439,28 +354,6 @@ pub fn run() {
                     {
                         let mut inner = state.inner.lock().unwrap();
                         let now = Local::now().timestamp_millis();
-                        
-                        // 1. Check for date changes
-                        let today = Local::now().format("%Y-%m-%d").to_string();
-                        if inner.config.last_round_date != today {
-                            inner.config.last_round_date = today;
-                            inner.config.reviewed_card_ids.clear();
-                            inner.config.today_round_count = 1;
-                            let _ = inner.db.save_config(&inner.config);
-                            
-                            // Reset trigger timer to start fresh
-                            inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
-                            
-                            if inner.config.is_enabled {
-                                trigger_needed = true;
-                            }
-                            
-                            // Emit events to notify frontend that config changed
-                            if let Some(main) = app_handle.get_webview_window("main") {
-                                let _ = main.emit("config-updated", inner.config.clone());
-                                let _ = main.emit("cards-updated", ());
-                            }
-                        }
                         
                         // Check if reminder window is currently open
                         let has_reminder_window = app_handle.get_webview_window("reminder").is_some();
@@ -509,13 +402,11 @@ pub fn run() {
             delete_card,
             review_card,
             get_reminder_card,
-            get_random_card,
             get_timer_config,
             set_timer_config,
             get_next_trigger_time,
             get_window_label,
-            close_reminder_window,
-            start_new_round
+            close_reminder_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
