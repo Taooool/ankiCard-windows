@@ -10,7 +10,7 @@ let searchQuery = '';
 let reminderQueue = [];
 let currentReminderCard = null;
 let countdownTimerId = null;
-let appConfig = { is_enabled: true, last_round_date: '', reviewed_card_ids: [] };
+let appConfig = { is_enabled: true, last_round_date: '', reviewed_card_ids: [], today_round_count: 1 };
 
 // ================= UTILITY FUNCTIONS =================
 function formatDate(timestamp) {
@@ -237,6 +237,11 @@ async function saveTimerConfig() {
 }
 
 async function updateCountdownUI() {
+  const roundCountEl = document.getElementById('sidebar-round-count');
+  if (roundCountEl && appConfig && typeof appConfig.today_round_count !== 'undefined') {
+    roundCountEl.textContent = appConfig.today_round_count;
+  }
+
   const isEnabled = document.getElementById('timer-toggle-switch').checked;
   const statusEl = document.getElementById('countdown-status');
   
@@ -247,6 +252,14 @@ async function updateCountdownUI() {
   
   try {
     const nextTrigger = await invoke('get_next_trigger_time');
+    
+    if (nextTrigger === 0) {
+      const pendingCount = allCards.filter(c => !appConfig.reviewed_card_ids.includes(c.id)).length;
+      const statusPrefix = pendingCount > 0 ? `待复习: ${pendingCount}张` : '今日已完成';
+      statusEl.textContent = `${statusPrefix} | 复习进行中...`;
+      return;
+    }
+    
     const diff = nextTrigger - Date.now();
     
     if (diff <= 0) {

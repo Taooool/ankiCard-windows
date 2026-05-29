@@ -477,6 +477,30 @@ body:has(#timer-toggle-switch:not(:checked)) .countdown-bullet {
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
+.round-count-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+  margin-top: 4px;
+}
+
+.round-count-row strong {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.icon-round {
+  width: 14px;
+  height: 14px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px var(--color-primary-glow));
+}
+
 /* Button UI */
 button {
   cursor: pointer;

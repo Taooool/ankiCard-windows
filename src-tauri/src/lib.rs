@@ -28,6 +28,10 @@ pub struct Card {
     pub remember_count: u32,       // remember count
 }
 
+fn default_today_round_count() -> u32 {
+    1
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
     #[serde(default = "default_interval_secs")]
@@ -38,6 +42,8 @@ pub struct AppConfig {
     pub last_round_date: String,  // Format: YYYY-MM-DD
     #[serde(default)]
     pub reviewed_card_ids: Vec<String>, // Card IDs reviewed in the current round
+    #[serde(default = "default_today_round_count")]
+    pub today_round_count: u32,   // Today's review round count
 }
 
 impl Default for AppConfig {
@@ -47,6 +53,7 @@ impl Default for AppConfig {
             is_enabled: true,
             last_round_date: "".to_string(),
             reviewed_card_ids: Vec::new(),
+            today_round_count: 1,
         }
     }
 }
@@ -348,6 +355,7 @@ fn set_timer_config(
 async fn start_new_round(state: State<'_, AppState>, app: AppHandle) -> Result<AppConfig, String> {
     let mut inner = state.inner.lock().unwrap();
     inner.config.reviewed_card_ids.clear();
+    inner.config.today_round_count += 1;
     
     // Reset trigger timer to start a fresh countdown for the new round
     let now = Local::now().timestamp_millis();
@@ -394,6 +402,7 @@ pub fn run() {
             if config.last_round_date != today {
                 config.last_round_date = today;
                 config.reviewed_card_ids.clear();
+                config.today_round_count = 1;
                 let _ = db.save_config(&config);
                 new_day_triggered = true;
             }
@@ -436,6 +445,7 @@ pub fn run() {
                         if inner.config.last_round_date != today {
                             inner.config.last_round_date = today;
                             inner.config.reviewed_card_ids.clear();
+                            inner.config.today_round_count = 1;
                             let _ = inner.db.save_config(&inner.config);
                             
                             // Reset trigger timer to start fresh
@@ -452,14 +462,34 @@ pub fn run() {
                             }
                         }
                         
-                        // 2. Check for periodic timer trigger
-                        if inner.config.is_enabled && now >= inner.next_trigger_time {
-                            trigger_needed = true;
-                            inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
+                        // Check if reminder window is currently open
+                        let has_reminder_window = app_handle.get_webview_window("reminder").is_some();
+                        if has_reminder_window {
+                            // Freeze timer at 0 when reminder window is open
+                            if inner.next_trigger_time != 0 {
+                                inner.next_trigger_time = 0;
+                                if let Some(main) = app_handle.get_webview_window("main") {
+                                    let _ = main.emit("config-updated", inner.config.clone());
+                                }
+                            }
+                        } else {
+                            // If timer was frozen, start fresh countdown from now
+                            if inner.next_trigger_time == 0 {
+                                inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
+                                if let Some(main) = app_handle.get_webview_window("main") {
+                                    let _ = main.emit("config-updated", inner.config.clone());
+                                }
+                            }
                             
-                            // Emit trigger updates to update countdown display
-                            if let Some(main) = app_handle.get_webview_window("main") {
-                                let _ = main.emit("config-updated", inner.config.clone());
+                            // 2. Check for periodic timer trigger
+                            if inner.config.is_enabled && now >= inner.next_trigger_time {
+                                trigger_needed = true;
+                                inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
+                                
+                                // Emit trigger updates to update countdown display
+                                if let Some(main) = app_handle.get_webview_window("main") {
+                                    let _ = main.emit("config-updated", inner.config.clone());
+                                }
                             }
                         }
                     }
