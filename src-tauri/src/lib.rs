@@ -117,6 +117,7 @@ pub struct AppStateInner {
     pub config: AppConfig,
     pub next_trigger_time: i64,
     pub db: DbManager,
+    pub programmatic_close: bool, // true when close is triggered by code, not by user
 }
 
 pub struct AppState {
@@ -315,7 +316,11 @@ async fn get_window_label(window: tauri::Window) -> String {
 }
 
 #[tauri::command]
-async fn close_reminder_window(app: AppHandle) -> Result<(), String> {
+async fn close_reminder_window(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    {
+        let mut inner = state.inner.lock().unwrap();
+        inner.programmatic_close = true;
+    }
     if let Some(reminder) = app.get_webview_window("reminder") {
         let _ = reminder.close();
     }
@@ -342,6 +347,7 @@ pub fn run() {
                     config,
                     next_trigger_time,
                     db,
+                    programmatic_close: false,
                 }),
             });
             
@@ -374,7 +380,7 @@ pub fn run() {
                                 }
                             }
                             
-                            // 2. Check for periodic timer trigger
+                            // Check for periodic timer trigger
                             if inner.config.is_enabled && now >= inner.next_trigger_time {
                                 trigger_needed = true;
                                 inner.next_trigger_time = now + (inner.config.interval_secs as i64) * 1000;
@@ -394,6 +400,25 @@ pub fn run() {
             });
             
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "reminder" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let state = window.state::<AppState>();
+                    let mut inner = state.inner.lock().unwrap();
+                    if inner.programmatic_close {
+                        // Code-initiated close (after review), reset flag
+                        inner.programmatic_close = false;
+                    } else {
+                        // User clicked X → disable auto-reminder
+                        inner.config.is_enabled = false;
+                        let _ = inner.db.save_config(&inner.config);
+                        if let Some(main) = window.app_handle().get_webview_window("main") {
+                            let _ = main.emit("config-updated", inner.config.clone());
+                        }
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_cards,
