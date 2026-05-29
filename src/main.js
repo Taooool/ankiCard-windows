@@ -37,13 +37,15 @@ function handleRoute() {
   const hash = window.location.hash || '#/';
   
   if (hash === '#/reminder') {
-    document.body.className = 'route-reminder';
     window.currentWindowLabel = 'reminder';
-    initReminderView();
+    initReminderView().then(() => {
+      document.body.className = 'route-reminder';
+    });
   } else {
-    document.body.className = 'route-main';
     window.currentWindowLabel = 'main';
-    initMainView();
+    initMainView().then(() => {
+      document.body.className = 'route-main';
+    });
   }
 }
 
@@ -52,13 +54,11 @@ async function initWindow() {
     const label = await invoke('get_window_label');
     window.currentWindowLabel = label;
     if (label === 'reminder') {
-      document.body.className = 'route-reminder';
       await initReminderView();
-      // Window was created hidden to avoid flash; show it now
-      await invoke('show_reminder_window');
+      document.body.className = 'route-reminder';
     } else {
-      document.body.className = 'route-main';
       await initMainView();
+      document.body.className = 'route-main';
     }
   } catch (err) {
     console.error('Failed to resolve window label:', err);
