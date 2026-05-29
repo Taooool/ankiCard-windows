@@ -6,21 +6,38 @@ use tauri::{State, Manager, AppHandle, Emitter, WebviewWindowBuilder, WebviewUrl
 use chrono::{Local};
 use tokio::time::{sleep, Duration};
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_interval() -> u32 {
+    10
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Card {
     pub id: String,
     pub front: String,
     pub back: String,
     pub create_time: i64,          // timestamp in ms
-    pub memory_depth: u32,
-    pub interval_mins: u32,
-    pub next_review_time: i64,     // timestamp in ms
+    #[serde(default)]
+    pub memory_depth: u32,         // remember rate (0-100)
+    #[serde(default)]
+    pub popup_count: u32,          // popup count
+    #[serde(default)]
+    pub remember_count: u32,       // remember count
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
+    #[serde(default = "default_interval")]
     pub interval_mins: u32,       // Timer interval
-    pub is_enabled: bool,         // Is timer enabled
+    #[serde(default = "default_true")]
+    pub is_enabled: bool,         // Is auto-reminder enabled
+    #[serde(default)]
+    pub last_round_date: String,  // Format: YYYY-MM-DD
+    #[serde(default)]
+    pub reviewed_card_ids: Vec<String>, // Card IDs reviewed in the current round
 }
 
 impl Default for AppConfig {
@@ -28,6 +45,8 @@ impl Default for AppConfig {
         Self {
             interval_mins: 10,
             is_enabled: true,
+            last_round_date: "".to_string(),
+            reviewed_card_ids: Vec::new(),
         }
     }
 }
@@ -157,8 +176,8 @@ fn add_card(state: State<'_, AppState>, app: AppHandle, front: String, back: Str
         back,
         create_time: now,
         memory_depth: 0,
-        interval_mins: 0,
-        next_review_time: now, // Due immediately
+        popup_count: 0,
+        remember_count: 0,
     };
     inner.cards.push(card.clone());
     inner.db.save_cards(&inner.cards)?;
@@ -194,11 +213,20 @@ fn delete_card(state: State<'_, AppState>, app: AppHandle, id: String) -> Result
     let mut inner = state.inner.lock().unwrap();
     let len_before = inner.cards.len();
     inner.cards.retain(|c| c.id != id);
+    
+    // Also remove from reviewed list if deleted
+    let reviewed_len_before = inner.config.reviewed_card_ids.len();
+    inner.config.reviewed_card_ids.retain(|x| x != &id);
+    
     if inner.cards.len() < len_before {
         inner.db.save_cards(&inner.cards)?;
+        if inner.config.reviewed_card_ids.len() < reviewed_len_before {
+            let _ = inner.db.save_config(&inner.config);
+        }
         
         if let Some(main) = app.get_webview_window("main") {
             let _ = main.emit("cards-updated", ());
+            let _ = main.emit("config-updated", inner.config.clone());
         }
         
         Ok(())
@@ -210,67 +238,58 @@ fn delete_card(state: State<'_, AppState>, app: AppHandle, id: String) -> Result
 #[tauri::command]
 fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembered: bool) -> Result<Card, String> {
     let mut inner = state.inner.lock().unwrap();
-    if let Some(card) = inner.cards.iter_mut().find(|c| c.id == id) {
-        let now = Local::now().timestamp_millis();
-        
+    
+    let cloned_card = if let Some(card) = inner.cards.iter_mut().find(|c| c.id == id) {
+        card.popup_count += 1;
         if remembered {
-            card.memory_depth += 1;
-            card.interval_mins = match card.memory_depth {
-                1 => 5,          // 5 mins
-                2 => 30,         // 30 mins
-                3 => 720,        // 12 hours (720 mins)
-                4 => 1440,       // 1 day
-                5 => 2880,       // 2 days
-                6 => 5760,       // 4 days
-                7 => 10080,      // 7 days
-                8 => 21600,      // 15 days
-                _ => card.interval_mins * 2, // Double interval
-            };
-            card.next_review_time = now + (card.interval_mins as i64) * 60 * 1000;
-        } else {
-            card.memory_depth = 0;
-            card.interval_mins = 1; // 1 min
-            card.next_review_time = now + 1 * 60 * 1000;
+            card.remember_count += 1;
         }
-        
-        let cloned = card.clone();
-        inner.db.save_cards(&inner.cards)?;
-        
-        if let Some(main) = app.get_webview_window("main") {
-            let _ = main.emit("cards-updated", ());
-        }
-        if let Some(reminder) = app.get_webview_window("reminder") {
-            let _ = reminder.emit("cards-updated", ());
-        }
-        
-        Ok(cloned)
+        card.memory_depth = (card.remember_count * 100) / card.popup_count;
+        card.clone()
     } else {
-        Err("Card not found".into())
+        return Err("Card not found".into());
+    };
+    
+    if !inner.config.reviewed_card_ids.contains(&id) {
+        inner.config.reviewed_card_ids.push(id.clone());
     }
+    
+    inner.db.save_cards(&inner.cards)?;
+    inner.db.save_config(&inner.config)?;
+    
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.emit("cards-updated", ());
+        let _ = main.emit("config-updated", inner.config.clone());
+    }
+    if let Some(reminder) = app.get_webview_window("reminder") {
+        let _ = reminder.emit("cards-updated", ());
+    }
+    
+    Ok(cloned_card)
 }
 
 #[tauri::command]
 fn get_reminder_card(state: State<'_, AppState>) -> Option<Card> {
     let inner = state.inner.lock().unwrap();
-    let now = Local::now().timestamp_millis();
     
-    let mut due_cards: Vec<Card> = inner.cards.iter()
-        .filter(|c| c.next_review_time <= now)
+    // Select cards that are NOT reviewed yet in the current daily round
+    let mut pending_cards: Vec<Card> = inner.cards.iter()
+        .filter(|c| !inner.config.reviewed_card_ids.contains(&c.id))
         .cloned()
         .collect();
     
-    if due_cards.is_empty() {
+    if pending_cards.is_empty() {
         None
     } else {
-        // Sort due cards:
-        // 1. memory_depth ASC (prioritize lower memory depths)
-        // 2. next_review_time ASC (most overdue first)
-        due_cards.sort_by(|a, b| {
+        // Sort:
+        // 1. memory_depth ASC
+        // 2. create_time ASC
+        pending_cards.sort_by(|a, b| {
             a.memory_depth.cmp(&b.memory_depth)
-                .then(a.next_review_time.cmp(&b.next_review_time))
+                .then(a.create_time.cmp(&b.create_time))
         });
         
-        Some(due_cards[0].clone())
+        Some(pending_cards[0].clone())
     }
 }
 
@@ -352,7 +371,17 @@ pub fn run() {
             
             let db = DbManager::new(&app_handle);
             let cards = db.load_cards();
-            let config = db.load_config();
+            let mut config = db.load_config();
+            
+            // Check if it's a new day on startup
+            let today = Local::now().format("%Y-%m-%d").to_string();
+            let mut new_day_triggered = false;
+            if config.last_round_date != today {
+                config.last_round_date = today;
+                config.reviewed_card_ids.clear();
+                let _ = db.save_config(&config);
+                new_day_triggered = true;
+            }
             
             let now = Local::now().timestamp_millis();
             let next_trigger_time = now + (config.interval_mins as i64) * 60 * 1000;
@@ -366,20 +395,56 @@ pub fn run() {
                 }),
             });
             
+            if new_day_triggered {
+                let state = app_handle.state::<AppState>();
+                let config_enabled = {
+                    let inner = state.inner.lock().unwrap();
+                    inner.config.is_enabled
+                };
+                if config_enabled {
+                    let _ = trigger_popup(&app_handle);
+                }
+            }
+            
             tauri::async_runtime::spawn(async move {
                 loop {
                     sleep(Duration::from_secs(1)).await;
                     
                     let mut trigger_needed = false;
-                    
                     let state = app_handle.state::<AppState>();
                     {
                         let mut inner = state.inner.lock().unwrap();
-                        if inner.config.is_enabled {
-                            let now = Local::now().timestamp_millis();
-                            if now >= inner.next_trigger_time {
+                        let now = Local::now().timestamp_millis();
+                        
+                        // 1. Check for date changes
+                        let today = Local::now().format("%Y-%m-%d").to_string();
+                        if inner.config.last_round_date != today {
+                            inner.config.last_round_date = today;
+                            inner.config.reviewed_card_ids.clear();
+                            let _ = inner.db.save_config(&inner.config);
+                            
+                            // Reset trigger timer to start fresh
+                            inner.next_trigger_time = now + (inner.config.interval_mins as i64) * 60 * 1000;
+                            
+                            if inner.config.is_enabled {
                                 trigger_needed = true;
-                                inner.next_trigger_time = now + (inner.config.interval_mins as i64) * 60 * 1000;
+                            }
+                            
+                            // Emit events to notify frontend that config changed
+                            if let Some(main) = app_handle.get_webview_window("main") {
+                                let _ = main.emit("config-updated", inner.config.clone());
+                                let _ = main.emit("cards-updated", ());
+                            }
+                        }
+                        
+                        // 2. Check for periodic timer trigger
+                        if inner.config.is_enabled && now >= inner.next_trigger_time {
+                            trigger_needed = true;
+                            inner.next_trigger_time = now + (inner.config.interval_mins as i64) * 60 * 1000;
+                            
+                            // Emit trigger updates to update countdown display
+                            if let Some(main) = app_handle.get_webview_window("main") {
+                                let _ = main.emit("config-updated", inner.config.clone());
                             }
                         }
                     }
@@ -423,109 +488,73 @@ mod tests {
             back: "A".into(),
             create_time: 1000,
             memory_depth: 0,
-            interval_mins: 0,
-            next_review_time: 1000,
+            popup_count: 0,
+            remember_count: 0,
         };
 
-        // Review 1: Remembered (depth -> 1)
-        let now = 2000;
-        card.memory_depth += 1;
-        card.interval_mins = match card.memory_depth {
-            1 => 5,
-            _ => 0,
-        };
-        card.next_review_time = now + (card.interval_mins as i64) * 60 * 1000;
+        // Review 1: Remembered (popup -> 1, remember -> 1, depth -> 100)
+        card.popup_count += 1;
+        card.remember_count += 1;
+        card.memory_depth = (card.remember_count * 100) / card.popup_count;
 
-        assert_eq!(card.memory_depth, 1);
-        assert_eq!(card.interval_mins, 5);
-        assert_eq!(card.next_review_time, 2000 + 5 * 60 * 1000);
+        assert_eq!(card.memory_depth, 100);
+        assert_eq!(card.popup_count, 1);
+        assert_eq!(card.remember_count, 1);
 
-        // Review 2: Remembered (depth -> 2)
-        card.memory_depth += 1;
-        card.interval_mins = match card.memory_depth {
-            1 => 5,
-            2 => 30,
-            _ => 0,
-        };
-        card.next_review_time = now + (card.interval_mins as i64) * 60 * 1000;
+        // Review 2: Forgotten (popup -> 2, remember -> 1, depth -> 50)
+        card.popup_count += 1;
+        card.memory_depth = (card.remember_count * 100) / card.popup_count;
 
-        assert_eq!(card.memory_depth, 2);
-        assert_eq!(card.interval_mins, 30);
-        assert_eq!(card.next_review_time, 2000 + 30 * 60 * 1000);
-    }
-
-    #[test]
-    fn test_card_review_forgotten() {
-        let mut card = Card {
-            id: "1".into(),
-            front: "Q".into(),
-            back: "A".into(),
-            create_time: 1000,
-            memory_depth: 3,
-            interval_mins: 720,
-            next_review_time: 1000,
-        };
-
-        // Review: Forgotten (depth -> 0, interval -> 1 min)
-        let now = 2000;
-        card.memory_depth = 0;
-        card.interval_mins = 1;
-        card.next_review_time = now + 1 * 60 * 1000;
-
-        assert_eq!(card.memory_depth, 0);
-        assert_eq!(card.interval_mins, 1);
-        assert_eq!(card.next_review_time, 2000 + 60 * 1000);
+        assert_eq!(card.memory_depth, 50);
+        assert_eq!(card.popup_count, 2);
+        assert_eq!(card.remember_count, 1);
     }
 
     #[test]
     fn test_due_cards_priority_sorting() {
-        let now = 5000;
-        
         let card1 = Card {
             id: "1".into(),
             front: "Q1".into(),
             back: "A1".into(),
             create_time: 1000,
-            memory_depth: 2,
-            interval_mins: 30,
-            next_review_time: 4000, // due
+            memory_depth: 50,
+            popup_count: 2,
+            remember_count: 1,
         };
         
         let card2 = Card {
             id: "2".into(),
             front: "Q2".into(),
             back: "A2".into(),
-            create_time: 1000,
+            create_time: 2000,
             memory_depth: 0, // lower memory depth, higher priority
-            interval_mins: 0,
-            next_review_time: 4500, // due
+            popup_count: 0,
+            remember_count: 0,
         };
 
         let card3 = Card {
             id: "3".into(),
             front: "Q3".into(),
             back: "A3".into(),
-            create_time: 1000,
-            memory_depth: 1,
-            interval_mins: 5,
-            next_review_time: 6000, // NOT due
+            create_time: 900,
+            memory_depth: 50, // same memory depth as card1, but created earlier
+            popup_count: 2,
+            remember_count: 1,
         };
 
-        let mut due_cards: Vec<Card> = vec![card1, card2, card3].into_iter()
-            .filter(|c| c.next_review_time <= now)
-            .collect();
+        let mut cards = vec![card1, card2, card3];
 
-        assert_eq!(due_cards.len(), 2);
-
-        // Sort: memory_depth ASC, then next_review_time ASC
-        due_cards.sort_by(|a, b| {
+        // Sort: memory_depth ASC, then create_time ASC
+        cards.sort_by(|a, b| {
             a.memory_depth.cmp(&b.memory_depth)
-                .then(a.next_review_time.cmp(&b.next_review_time))
+                .then(a.create_time.cmp(&b.create_time))
         });
 
-        // card2 has memory depth 0, card1 has memory depth 2.
-        // Therefore, card2 must be first!
-        assert_eq!(due_cards[0].id, "2");
-        assert_eq!(due_cards[1].id, "1");
+        // card2 has memory depth 0 (should be first)
+        // card3 has memory depth 50 and create_time 900 (should be second)
+        // card1 has memory depth 50 and create_time 1000 (should be third)
+        assert_eq!(cards[0].id, "2");
+        assert_eq!(cards[1].id, "3");
+        assert_eq!(cards[2].id, "1");
     }
 }

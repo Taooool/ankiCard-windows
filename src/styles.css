@@ -597,6 +597,26 @@ button {
   box-shadow: 0 0 6px var(--color-secondary);
 }
 
+.remember-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.status-reviewed {
+  color: var(--color-success) !important;
+  font-weight: 600;
+}
+
+.status-pending {
+  color: var(--color-warning) !important;
+  font-weight: 600;
+}
+
+.card-item-due.reviewed-done {
+  color: var(--color-success);
+  font-weight: 500;
+}
+
 .action-buttons {
   display: flex;
   gap: 10px;

@@ -10,6 +10,7 @@ let searchQuery = '';
 let reminderQueue = [];
 let currentReminderCard = null;
 let countdownTimerId = null;
+let appConfig = { is_enabled: true, last_round_date: '', reviewed_card_ids: [] };
 
 // ================= UTILITY FUNCTIONS =================
 function formatDate(timestamp) {
@@ -23,30 +24,19 @@ function formatDate(timestamp) {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-function formatDueTime(timestamp) {
-  const diff = timestamp - Date.now();
-  if (diff <= 0) {
+function getCardDueInfo(card) {
+  const isReviewed = appConfig && appConfig.reviewed_card_ids && appConfig.reviewed_card_ids.includes(card.id);
+  if (isReviewed) {
+    return { text: '已复习', isDue: false };
+  } else {
     return { text: '待复习', isDue: true };
   }
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) {
-    return { text: '即将到期', isDue: false };
-  }
-  if (mins < 60) {
-    return { text: `${mins}分钟后`, isDue: false };
-  }
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) {
-    return { text: `${hours}小时后`, isDue: false };
-  }
-  const days = Math.floor(hours / 24);
-  return { text: `${days}天后`, isDue: false };
 }
 
 function getDepthBadgeClass(depth) {
   if (depth === 0) return 'depth-0';
-  if (depth <= 2) return 'depth-low';
-  if (depth <= 5) return 'depth-medium';
+  if (depth < 40) return 'depth-low';
+  if (depth < 80) return 'depth-medium';
   return 'depth-high';
 }
 
@@ -90,7 +80,7 @@ function getSortedCards() {
   if (currentSortMode === 'time') {
     sorted.sort((a, b) => b.create_time - a.create_time);
   } else if (currentSortMode === 'depth') {
-    sorted.sort((a, b) => b.memory_depth - a.memory_depth || b.create_time - a.create_time);
+    sorted.sort((a, b) => a.memory_depth - b.memory_depth || a.create_time - b.create_time);
   }
   return sorted;
 }
@@ -138,14 +128,14 @@ function renderCardsList() {
     li.className = `card-item ${card.id === selectedCardId ? 'selected' : ''}`;
     li.dataset.id = card.id;
     
-    const dueInfo = formatDueTime(card.next_review_time);
-    const dueClass = dueInfo.isDue ? 'card-item-due due-now' : 'card-item-due';
+    const dueInfo = getCardDueInfo(card);
+    const dueClass = dueInfo.isDue ? 'card-item-due due-now' : 'card-item-due reviewed-done';
     const depthClass = getDepthBadgeClass(card.memory_depth);
     
     li.innerHTML = `
       <div class="card-item-title">${escapeHtml(card.front)}</div>
       <div class="card-item-meta">
-        <span class="badge-depth ${depthClass}">深度: ${card.memory_depth}</span>
+        <span class="badge-depth ${depthClass}">深度: ${card.memory_depth}%</span>
         <span class="${dueClass}">${dueInfo.text}</span>
       </div>
     `;
@@ -184,14 +174,19 @@ function renderCardDetail(card) {
   emptyState.classList.remove('active');
   detailView.classList.add('active');
   
-  document.getElementById('detail-depth-val').textContent = card.memory_depth;
-  document.getElementById('detail-interval-val').textContent = card.interval_mins === 0 ? '即时' : `${card.interval_mins}分钟`;
+  document.getElementById('detail-depth-val').textContent = `${card.memory_depth}%`;
+  document.getElementById('detail-popups-val').textContent = card.popup_count || 0;
+  document.getElementById('detail-remembers-val').textContent = card.remember_count || 0;
   document.getElementById('detail-front-text').textContent = card.front;
   document.getElementById('detail-back-text').textContent = card.back;
   document.getElementById('detail-create-time').textContent = formatDate(card.create_time);
   
-  const dueInfo = formatDueTime(card.next_review_time);
-  document.getElementById('detail-next-time').textContent = dueInfo.isDue ? '已到期，等待复习' : formatDate(card.next_review_time);
+  const dueInfo = getCardDueInfo(card);
+  const statusEl = document.getElementById('detail-status-val');
+  if (statusEl) {
+    statusEl.textContent = dueInfo.text;
+    statusEl.className = dueInfo.isDue ? 'status-pending' : 'status-reviewed';
+  }
 }
 
 // Escape HTML utility
@@ -204,9 +199,9 @@ function escapeHtml(str) {
 // ================= TIMER CONTROL LOGIC =================
 async function loadTimerConfig() {
   try {
-    const config = await invoke('get_timer_config');
-    document.getElementById('timer-toggle-switch').checked = config.is_enabled;
-    document.getElementById('timer-interval-input').value = config.interval_mins;
+    appConfig = await invoke('get_timer_config');
+    document.getElementById('timer-toggle-switch').checked = appConfig.is_enabled;
+    document.getElementById('timer-interval-input').value = appConfig.interval_mins;
     updateCountdownUI();
   } catch (err) {
     console.error('Failed to load config:', err);
@@ -218,7 +213,7 @@ async function saveTimerConfig() {
   const intervalMins = parseInt(document.getElementById('timer-interval-input').value) || 10;
   
   try {
-    await invoke('set_timer_config', { intervalMins, isEnabled });
+    appConfig = await invoke('set_timer_config', { intervalMins, isEnabled });
     updateCountdownUI();
   } catch (err) {
     console.error('Failed to save config:', err);
@@ -230,7 +225,7 @@ async function updateCountdownUI() {
   const statusEl = document.getElementById('countdown-status');
   
   if (!isEnabled) {
-    statusEl.textContent = '定时提醒已禁用';
+    statusEl.textContent = '自动提醒已禁用';
     return;
   }
   
@@ -244,7 +239,10 @@ async function updateCountdownUI() {
       const totalSecs = Math.floor(diff / 1000);
       const mins = Math.floor(totalSecs / 60);
       const secs = totalSecs % 60;
-      statusEl.textContent = `下次提醒倒计时: ${mins}分${secs}秒`;
+      
+      const pendingCount = allCards.filter(c => !appConfig.reviewed_card_ids.includes(c.id)).length;
+      const statusPrefix = pendingCount > 0 ? `待复习: ${pendingCount}张` : '今日已完成';
+      statusEl.textContent = `${statusPrefix} | 倒计时: ${mins}分${secs}秒`;
     }
   } catch (err) {
     statusEl.textContent = '同步下次提醒时间失败';
@@ -347,15 +345,15 @@ async function initReminderView() {
 
 async function loadReminderQueue() {
   try {
-    // Get all cards from backend
     const cards = await invoke('get_cards');
-    const now = Date.now();
-    // Filter due cards
-    reminderQueue = cards.filter(c => c.next_review_time <= now);
+    appConfig = await invoke('get_timer_config');
     
-    // Sort by Ebbinghaus priority
+    // Filter cards not reviewed in current round
+    reminderQueue = cards.filter(c => !appConfig.reviewed_card_ids.includes(c.id));
+    
+    // Sort: memory_depth ASC, then create_time ASC
     reminderQueue.sort((a, b) => {
-      return a.memory_depth - b.memory_depth || a.next_review_time - b.next_review_time;
+      return a.memory_depth - b.memory_depth || a.create_time - b.create_time;
     });
   } catch (err) {
     console.error('Failed to load reminder cards:', err);
@@ -374,8 +372,7 @@ function renderNextReminderCard() {
     activeState.classList.remove('active');
     successState.classList.add('active');
     
-    // Auto close window if this was triggered automatically
-    document.getElementById('success-desc').textContent = "所有到期的记忆卡片均已处理完毕，保持优秀的学习节奏！";
+    document.getElementById('success-desc').textContent = "今日复习已全部完成！保持优秀的学习节奏！";
     return;
   }
   
@@ -386,7 +383,7 @@ function renderNextReminderCard() {
   
   // Fill details
   document.getElementById('popup-queue-badge').textContent = `剩余 ${reminderQueue.length} 张`;
-  document.getElementById('popup-depth-badge').textContent = `深度 ${currentReminderCard.memory_depth}`;
+  document.getElementById('popup-depth-badge').textContent = `深度 ${currentReminderCard.memory_depth}%`;
   document.getElementById('popup-front-text').textContent = currentReminderCard.front;
   
   document.getElementById('popup-back-question-ref').textContent = currentReminderCard.front;
@@ -403,22 +400,11 @@ async function handleReviewResult(remembered) {
   const cardId = currentReminderCard.id;
   
   try {
-    // Call Rust to update card's Ebbinghaus status
+    // Call Rust to update card's status
     await invoke('review_card', { id: cardId, remembered });
     
-    // Smooth transition: pop first item and load next
-    reminderQueue.shift();
-    
-    // Transition effect
-    const activeState = document.getElementById('reminder-active-state');
-    activeState.style.opacity = '0';
-    activeState.style.transition = 'opacity 0.2s ease';
-    
-    setTimeout(() => {
-      renderNextReminderCard();
-      activeState.style.opacity = '1';
-    }, 200);
-    
+    // Close window immediately after reviewing one card
+    await closeWindow();
   } catch (err) {
     console.error('Failed to submit review:', err);
   }
@@ -508,7 +494,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       await invoke('trigger_reminder_manually');
     } catch (err) {
-      alert('测试启动提醒窗口失败: ' + err);
+      alert('启动提醒窗口失败: ' + err);
     }
   });
   
@@ -532,9 +518,9 @@ window.addEventListener('DOMContentLoaded', () => {
   
   // Sync timer configurations
   listen('config-updated', (event) => {
-    const config = event.payload;
-    document.getElementById('timer-toggle-switch').checked = config.is_enabled;
-    document.getElementById('timer-interval-input').value = config.interval_mins;
+    appConfig = event.payload;
+    document.getElementById('timer-toggle-switch').checked = appConfig.is_enabled;
+    document.getElementById('timer-interval-input').value = appConfig.interval_mins;
     updateCountdownUI();
   });
   
