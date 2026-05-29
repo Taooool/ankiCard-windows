@@ -363,10 +363,6 @@ async fn start_new_round(state: State<'_, AppState>, app: AppHandle) -> Result<A
     Ok(inner.config.clone())
 }
 
-#[tauri::command]
-async fn trigger_reminder_manually(app: AppHandle) -> Result<(), String> {
-    trigger_popup(&app)
-}
 
 #[tauri::command]
 async fn get_window_label(window: tauri::Window) -> String {
@@ -487,7 +483,6 @@ pub fn run() {
             get_timer_config,
             set_timer_config,
             get_next_trigger_time,
-            trigger_reminder_manually,
             get_window_label,
             close_reminder_window,
             start_new_round

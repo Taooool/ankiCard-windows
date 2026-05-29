@@ -513,15 +513,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Debug manual test trigger
-  document.getElementById('test-reminder-btn').addEventListener('click', async () => {
-    try {
-      await invoke('trigger_reminder_manually');
-    } catch (err) {
-      alert('启动提醒窗口失败: ' + err);
-    }
-  });
-  
   // ----- POPUP WINDOW EVENTS -----
   document.getElementById('view-answer-btn').addEventListener('click', revealAnswer);
   document.getElementById('remember-btn').addEventListener('click', () => handleReviewResult(true));
