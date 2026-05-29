@@ -5,23 +5,13 @@ const { listen } = window.__TAURI__.event;
 // ================= STATE MANAGEMENT =================
 let allCards = [];
 let selectedCardId = null;
-let currentSortMode = 'time'; // 'time' or 'depth'
+let currentSortMode = 'depth-asc'; // 'depth-asc' or 'depth-desc'
 let searchQuery = '';
 let currentReminderCard = null;
 let countdownTimerId = null;
 let appConfig = { is_enabled: true };
 
 // ================= UTILITY FUNCTIONS =================
-function formatDate(timestamp) {
-  if (!timestamp) return '--';
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
 
 function getDepthBadgeClass(depth) {
   if (depth === 0) return 'depth-0';
@@ -67,10 +57,10 @@ async function initWindow() {
 // ================= MAIN VIEW LOGIC =================
 function getSortedCards() {
   let sorted = [...allCards];
-  if (currentSortMode === 'time') {
-    sorted.sort((a, b) => b.create_time - a.create_time);
-  } else if (currentSortMode === 'depth') {
-    sorted.sort((a, b) => a.memory_depth - b.memory_depth || a.create_time - b.create_time);
+  if (currentSortMode === 'depth-asc') {
+    sorted.sort((a, b) => a.memory_depth - b.memory_depth || b.id.localeCompare(a.id));
+  } else if (currentSortMode === 'depth-desc') {
+    sorted.sort((a, b) => b.memory_depth - a.memory_depth || b.id.localeCompare(a.id));
   }
   return sorted;
 }
@@ -166,9 +156,6 @@ function renderCardDetail(card) {
   document.getElementById('detail-remembers-val').textContent = card.remember_count || 0;
   document.getElementById('detail-front-text').textContent = card.front;
   document.getElementById('detail-back-text').textContent = card.back;
-  document.getElementById('detail-create-time').textContent = formatDate(card.create_time);
-  
-
 }
 
 // Escape HTML utility
@@ -422,17 +409,17 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   
   // Sorting
-  document.getElementById('sort-time-btn').addEventListener('click', () => {
-    document.getElementById('sort-time-btn').classList.add('active');
-    document.getElementById('sort-depth-btn').classList.remove('active');
-    currentSortMode = 'time';
+  document.getElementById('sort-depth-asc-btn').addEventListener('click', () => {
+    document.getElementById('sort-depth-asc-btn').classList.add('active');
+    document.getElementById('sort-depth-desc-btn').classList.remove('active');
+    currentSortMode = 'depth-asc';
     renderCardsList();
   });
   
-  document.getElementById('sort-depth-btn').addEventListener('click', () => {
-    document.getElementById('sort-depth-btn').classList.add('active');
-    document.getElementById('sort-time-btn').classList.remove('active');
-    currentSortMode = 'depth';
+  document.getElementById('sort-depth-desc-btn').addEventListener('click', () => {
+    document.getElementById('sort-depth-desc-btn').classList.add('active');
+    document.getElementById('sort-depth-asc-btn').classList.remove('active');
+    currentSortMode = 'depth-desc';
     renderCardsList();
   });
   

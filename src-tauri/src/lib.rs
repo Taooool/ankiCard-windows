@@ -19,7 +19,6 @@ pub struct Card {
     pub id: String,
     pub front: String,
     pub back: String,
-    pub create_time: i64,          // timestamp in ms
     #[serde(default)]
     pub memory_depth: u32,         // remember rate (0-100)
     #[serde(default)]
@@ -171,7 +170,6 @@ fn add_card(state: State<'_, AppState>, app: AppHandle, front: String, back: Str
         id: now.to_string(),
         front,
         back,
-        create_time: now,
         memory_depth: 0,
         popup_count: 0,
         remember_count: 0,
@@ -462,7 +460,6 @@ mod tests {
             id: "1".into(),
             front: "Q".into(),
             back: "A".into(),
-            create_time: 1000,
             memory_depth: 0,
             popup_count: 0,
             remember_count: 0,
@@ -489,21 +486,19 @@ mod tests {
     #[test]
     fn test_due_cards_priority_sorting() {
         let card1 = Card {
-            id: "1".into(),
+            id: "2".into(),
             front: "Q1".into(),
             back: "A1".into(),
-            create_time: 1000,
             memory_depth: 50,
             popup_count: 2,
             remember_count: 1,
         };
         
         let card2 = Card {
-            id: "2".into(),
+            id: "1".into(),
             front: "Q2".into(),
             back: "A2".into(),
-            create_time: 2000,
-            memory_depth: 0, // lower memory depth, higher priority
+            memory_depth: 0,
             popup_count: 0,
             remember_count: 0,
         };
@@ -512,25 +507,24 @@ mod tests {
             id: "3".into(),
             front: "Q3".into(),
             back: "A3".into(),
-            create_time: 900,
-            memory_depth: 50, // same memory depth as card1, but created earlier
+            memory_depth: 50,
             popup_count: 2,
             remember_count: 1,
         };
 
         let mut cards = vec![card1, card2, card3];
 
-        // Sort: memory_depth ASC, then create_time ASC
+        // Sort: memory_depth ASC, then id ASC
         cards.sort_by(|a, b| {
             a.memory_depth.cmp(&b.memory_depth)
-                .then(a.create_time.cmp(&b.create_time))
+                .then(a.id.cmp(&b.id))
         });
 
         // card2 has memory depth 0 (should be first)
-        // card3 has memory depth 50 and create_time 900 (should be second)
-        // card1 has memory depth 50 and create_time 1000 (should be third)
-        assert_eq!(cards[0].id, "2");
-        assert_eq!(cards[1].id, "3");
-        assert_eq!(cards[2].id, "1");
+        // card1 has memory depth 50 and id "2" (should be second)
+        // card3 has memory depth 50 and id "3" (should be third)
+        assert_eq!(cards[0].id, "1");
+        assert_eq!(cards[1].id, "2");
+        assert_eq!(cards[2].id, "3");
     }
 }
