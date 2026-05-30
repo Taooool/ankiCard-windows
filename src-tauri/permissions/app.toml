@@ -6,6 +6,7 @@ commands.allow = [
     "add_card",
     "edit_card",
     "delete_card",
+    "delete_cards",
     "review_card",
     "get_reminder_card",
     "get_random_card",

@@ -197,6 +197,12 @@ body.route-reminder #reminder-view {
   font-size: 13px;
 }
 
+.sort-label-and-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .label-sort {
   color: var(--text-muted);
 }
@@ -227,6 +233,31 @@ body.route-reminder #reminder-view {
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
+.btn-batch-toggle {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.btn-batch-toggle:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--border-color-hover);
+  color: var(--text-main);
+}
+
+body.batch-mode .btn-batch-toggle {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--shadow-indigo);
+}
+
 /* Card list wrapper */
 .card-list-wrapper {
   flex-grow: 1;
@@ -245,14 +276,23 @@ body.route-reminder #reminder-view {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 12px 14px;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
   transition: var(--transition-smooth);
   position: relative;
   overflow: hidden;
+}
+
+.card-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-grow: 1;
+  min-width: 0;
 }
 
 .card-item:hover {
@@ -265,6 +305,54 @@ body.route-reminder #reminder-view {
   background: rgba(99, 102, 241, 0.08);
   border-color: var(--color-primary);
   box-shadow: inset 4px 0 0 var(--color-primary);
+}
+
+/* Custom Checkbox styles */
+.card-item-checkbox-wrap {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+body.batch-mode .card-item-checkbox-wrap {
+  display: flex;
+}
+
+.card-item-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.6);
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-item-checkbox:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+}
+
+.card-item-checkbox:checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+.card-item-checkbox:checked::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-0.5px, -1px);
+  display: block;
 }
 
 .card-item-title {
@@ -281,6 +369,81 @@ body.route-reminder #reminder-view {
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
+}
+
+/* Batch Action Bar styles */
+.batch-action-bar {
+  display: none;
+  background: rgba(10, 15, 26, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px 20px;
+  flex-direction: column;
+  gap: 12px;
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.batch-mode .batch-action-bar {
+  display: flex;
+}
+
+body.batch-mode .sidebar-timer-config {
+  display: none !important;
+}
+
+.batch-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.batch-select-info {
+  color: var(--text-muted);
+}
+
+.batch-select-info strong {
+  color: var(--color-primary);
+  font-size: 15px;
+}
+
+.btn-batch-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: var(--transition-smooth);
+}
+
+.btn-batch-link:hover {
+  color: var(--text-main);
+  filter: drop-shadow(0 0 4px var(--color-primary));
+}
+
+.batch-buttons-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.batch-buttons-row .btn-action {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Memory depth tag styling */

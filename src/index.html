@@ -56,11 +56,14 @@
           </div>
 
           <div class="sort-bar">
-            <span class="label-sort">记忆深度:</span>
-            <div class="sort-tabs">
-              <button id="sort-depth-asc-btn" class="sort-tab active" data-sort="depth-asc">由低到高</button>
-              <button id="sort-depth-desc-btn" class="sort-tab" data-sort="depth-desc">由高到低</button>
+            <div class="sort-label-and-tabs">
+              <span class="label-sort">排序:</span>
+              <div class="sort-tabs">
+                <button id="sort-depth-asc-btn" class="sort-tab active" data-sort="depth-asc">由低到高</button>
+                <button id="sort-depth-desc-btn" class="sort-tab" data-sort="depth-desc">由高到低</button>
+              </div>
             </div>
+            <button id="batch-toggle-btn" class="btn-batch-toggle">批量管理</button>
           </div>
         </div>
 
@@ -69,6 +72,18 @@
           <ul id="cards-list" class="cards-list-ul">
             <!-- Dynamically populated -->
           </ul>
+        </div>
+
+        <!-- Batch Action Bar -->
+        <div id="batch-action-bar" class="batch-action-bar">
+          <div class="batch-info-row">
+            <span class="batch-select-info">已选择 <strong id="batch-select-count">0</strong> 张卡片</span>
+            <button id="batch-select-all-btn" class="btn-batch-link">全选</button>
+          </div>
+          <div class="batch-buttons-row">
+            <button id="batch-cancel-btn" class="btn-action">取消</button>
+            <button id="batch-delete-btn" class="btn-action btn-danger">批量删除</button>
+          </div>
         </div>
 
         <!-- Timer settings at the bottom of sidebar -->

@@ -223,6 +223,31 @@ fn delete_card(state: State<'_, AppState>, app: AppHandle, id: String) -> Result
 }
 
 #[tauri::command]
+fn delete_cards(state: State<'_, AppState>, app: AppHandle, ids: Vec<String>) -> Result<(), String> {
+    let mut inner = state.inner.lock().unwrap();
+    let len_before = inner.cards.len();
+    inner.cards.retain(|c| !ids.contains(&c.id));
+    
+    if let Some(ref last_id) = inner.last_reviewed_id {
+        if ids.contains(last_id) {
+            inner.last_reviewed_id = None;
+        }
+    }
+    
+    if inner.cards.len() < len_before {
+        inner.db.save_cards(&inner.cards)?;
+        
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.emit("cards-updated", ());
+        }
+        
+        Ok(())
+    } else {
+        Err("No cards found to delete".into())
+    }
+}
+
+#[tauri::command]
 fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembered: bool) -> Result<Card, String> {
     let mut inner = state.inner.lock().unwrap();
     inner.last_reviewed_id = Some(id.clone());
@@ -438,6 +463,7 @@ pub fn run() {
             add_card,
             edit_card,
             delete_card,
+            delete_cards,
             review_card,
             get_reminder_card,
             get_timer_config,

@@ -10,6 +10,8 @@ let searchQuery = '';
 let currentReminderCard = null;
 let countdownTimerId = null;
 let appConfig = { is_enabled: true };
+let isBatchMode = false;
+let batchSelectedIds = new Set();
 
 // ================= UTILITY FUNCTIONS =================
 
@@ -105,19 +107,39 @@ function renderCardsList() {
   
   filtered.forEach(card => {
     const li = document.createElement('li');
-    li.className = `card-item ${card.id === selectedCardId ? 'selected' : ''}`;
+    const isChecked = batchSelectedIds.has(card.id);
+    li.className = `card-item ${card.id === selectedCardId ? 'selected' : ''} ${isChecked ? 'checked' : ''}`;
     li.dataset.id = card.id;
     
     const depthClass = getDepthBadgeClass(card.memory_depth);
     
     li.innerHTML = `
-      <div class="card-item-title">${escapeHtml(card.front)}</div>
-      <div class="card-item-meta">
-        <span class="badge-depth ${depthClass}">深度: ${card.memory_depth}%</span>
+      <div class="card-item-checkbox-wrap">
+        <input type="checkbox" class="card-item-checkbox" ${isChecked ? 'checked' : ''} />
+      </div>
+      <div class="card-item-content">
+        <div class="card-item-title">${escapeHtml(card.front)}</div>
+        <div class="card-item-meta">
+          <span class="badge-depth ${depthClass}">深度: ${card.memory_depth}%</span>
+        </div>
       </div>
     `;
     
-    li.addEventListener('click', () => selectCard(card.id));
+    li.addEventListener('click', (e) => {
+      if (isBatchMode) {
+        e.preventDefault();
+        toggleBatchSelect(card.id);
+      } else {
+        selectCard(card.id);
+      }
+    });
+    
+    const checkbox = li.querySelector('.card-item-checkbox');
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleBatchSelect(card.id);
+    });
+    
     listEl.appendChild(li);
   });
 }
@@ -394,6 +416,125 @@ async function closeWindow() {
   }
 }
 
+// ================= BATCH MODE LOGIC =================
+function toggleBatchMode() {
+  isBatchMode = !isBatchMode;
+  batchSelectedIds.clear();
+  
+  const editBtn = document.getElementById('edit-card-btn');
+  const deleteBtn = document.getElementById('delete-card-btn');
+  
+  if (isBatchMode) {
+    document.body.classList.add('batch-mode');
+    document.getElementById('batch-toggle-btn').textContent = '退出批量';
+    if (editBtn) editBtn.disabled = true;
+    if (deleteBtn) deleteBtn.disabled = true;
+  } else {
+    document.body.classList.remove('batch-mode');
+    document.getElementById('batch-toggle-btn').textContent = '批量管理';
+    if (editBtn) editBtn.disabled = false;
+    if (deleteBtn) deleteBtn.disabled = false;
+  }
+  
+  updateBatchActionBar();
+  renderCardsList();
+}
+
+function toggleBatchSelect(id) {
+  if (batchSelectedIds.has(id)) {
+    batchSelectedIds.delete(id);
+  } else {
+    batchSelectedIds.add(id);
+  }
+  updateBatchActionBar();
+  
+  const cardEl = document.querySelector(`.card-item[data-id="${id}"]`);
+  if (cardEl) {
+    const checkbox = cardEl.querySelector('.card-item-checkbox');
+    if (batchSelectedIds.has(id)) {
+      cardEl.classList.add('checked');
+      if (checkbox) checkbox.checked = true;
+    } else {
+      cardEl.classList.remove('checked');
+      if (checkbox) checkbox.checked = false;
+    }
+  }
+}
+
+function updateBatchActionBar() {
+  const countEl = document.getElementById('batch-select-count');
+  if (countEl) {
+    countEl.textContent = batchSelectedIds.size;
+  }
+  
+  const selectAllBtn = document.getElementById('batch-select-all-btn');
+  if (selectAllBtn) {
+    const sorted = getSortedCards();
+    const filtered = sorted.filter(card => {
+      const q = searchQuery.toLowerCase();
+      return card.front.toLowerCase().includes(q) || card.back.toLowerCase().includes(q);
+    });
+    
+    const isAllSelected = filtered.length > 0 && filtered.every(card => batchSelectedIds.has(card.id));
+    selectAllBtn.textContent = isAllSelected ? '取消全选' : '全选';
+  }
+}
+
+function handleBatchSelectAll() {
+  const sorted = getSortedCards();
+  const filtered = sorted.filter(card => {
+    const q = searchQuery.toLowerCase();
+    return card.front.toLowerCase().includes(q) || card.back.toLowerCase().includes(q);
+  });
+  
+  const isAllSelected = filtered.length > 0 && filtered.every(card => batchSelectedIds.has(card.id));
+  
+  if (isAllSelected) {
+    filtered.forEach(card => batchSelectedIds.delete(card.id));
+  } else {
+    filtered.forEach(card => batchSelectedIds.add(card.id));
+  }
+  
+  updateBatchActionBar();
+  renderCardsList();
+}
+
+async function handleBatchDelete() {
+  if (batchSelectedIds.size === 0) {
+    alert('请先选择要删除的卡片');
+    return;
+  }
+  
+  if (confirm(`确定要删除选中的 ${batchSelectedIds.size} 张卡片吗？`)) {
+    try {
+      const idsToDelete = Array.from(batchSelectedIds);
+      await invoke('delete_cards', { ids: idsToDelete });
+      
+      batchSelectedIds.clear();
+      isBatchMode = false;
+      document.body.classList.remove('batch-mode');
+      document.getElementById('batch-toggle-btn').textContent = '批量管理';
+      
+      const editBtn = document.getElementById('edit-card-btn');
+      const deleteBtn = document.getElementById('delete-card-btn');
+      if (editBtn) editBtn.disabled = false;
+      if (deleteBtn) deleteBtn.disabled = false;
+      
+      selectedCardId = null;
+      await loadCards();
+      
+      if (allCards.length > 0) {
+        const sorted = getSortedCards();
+        selectCard(sorted[0].id);
+      } else {
+        renderCardDetail(null);
+      }
+    } catch (err) {
+      alert('批量删除失败: ' + err);
+    }
+  }
+}
+
 // ================= GLOBAL EVENT INITIALIZATION =================
 window.addEventListener('DOMContentLoaded', () => {
   // Resolve window type and initialize
@@ -438,6 +579,12 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   
   document.getElementById('delete-card-btn').addEventListener('click', deleteSelectedCard);
+  
+  // Batch toggle buttons
+  document.getElementById('batch-toggle-btn').addEventListener('click', toggleBatchMode);
+  document.getElementById('batch-select-all-btn').addEventListener('click', handleBatchSelectAll);
+  document.getElementById('batch-cancel-btn').addEventListener('click', toggleBatchMode);
+  document.getElementById('batch-delete-btn').addEventListener('click', handleBatchDelete);
   
   // Timer configs
   document.getElementById('timer-toggle-switch').addEventListener('change', saveTimerConfig);
