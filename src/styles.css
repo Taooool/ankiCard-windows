@@ -148,6 +148,8 @@ body.route-reminder #reminder-view {
   letter-spacing: 0.05em;
 }
 
+
+
 /* Controls section in sidebar */
 .controls-section {
   padding: 16px 20px;
@@ -867,13 +869,20 @@ button {
   border-top: 1px solid var(--border-color);
 }
 
-/* Floating Add Card Button */
-.btn-add-float {
+/* Floating Actions Container */
+.float-actions-wrap {
   position: absolute;
   bottom: 24px;
   left: calc(360px + (100% - 360px)/2);
   transform: translateX(-50%);
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 100;
+}
+
+/* Base style for both floating buttons */
+.btn-float {
   border: none;
   color: #fff;
   padding: 12px 24px;
@@ -883,18 +892,42 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
   transition: var(--transition-smooth);
-  z-index: 100;
+  cursor: pointer;
 }
 
-.btn-add-float:hover {
-  transform: translateX(-50%) translateY(-2px);
+/* Specific styling for Add Card Button */
+.btn-add-card {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.btn-add-card:hover {
+  transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
 }
 
-.btn-add-float:active {
-  transform: translateX(-50%) translateY(0);
+.btn-add-card:active {
+  transform: translateY(0);
+}
+
+/* Specific styling for Import Cards Button */
+.btn-import-cards {
+  background: rgba(31, 41, 55, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn-import-cards:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--border-color-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+}
+
+.btn-import-cards:active {
+  transform: translateY(0);
 }
 
 /* ================= REMINDER POPUP ROUTE ================= */

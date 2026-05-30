@@ -535,6 +535,69 @@ async function handleBatchDelete() {
   }
 }
 
+// ================= IMPORT CARDS LOGIC =================
+function parseImportedCards(text) {
+  const lines = text.split(/\r?\n/);
+  const cards = [];
+  
+  let i = 0;
+  while (i < lines.length) {
+    // Skip leading blank lines
+    while (i < lines.length && lines[i].trim() === "") {
+      i++;
+    }
+    if (i >= lines.length) break;
+    
+    const front = lines[i].trim();
+    const back = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+    
+    if (front && back) {
+      cards.push({ front, back });
+    }
+    
+    // Move to next block: front, back, and the trailing blank line (3 lines in total)
+    i += 3;
+  }
+  return cards;
+}
+
+async function handleImportCards(e) {
+  const fileInput = document.getElementById('import-file-input');
+  const file = fileInput.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    const text = event.target.result;
+    const newCards = parseImportedCards(text);
+    
+    if (newCards.length === 0) {
+      alert('未在此文件中解析出符合格式的卡片！\n格式要求：\n第一行为问题\n第二行为答案\n第三行留空（依次循环）');
+      fileInput.value = '';
+      return;
+    }
+    
+    if (confirm(`成功解析到 ${newCards.length} 张卡片，是否确认导入？`)) {
+      try {
+        const pairs = newCards.map(c => [c.front, c.back]);
+        const count = await invoke('import_cards', { newCards: pairs });
+        alert(`成功导入 ${count} 张卡片！`);
+        
+        await loadCards();
+        
+        if (allCards.length > 0) {
+          const sorted = getSortedCards();
+          selectCard(sorted[0].id);
+        }
+      } catch (err) {
+        alert('导入卡片失败: ' + err);
+      }
+    }
+    fileInput.value = '';
+  };
+  reader.readAsText(file);
+}
+
 // ================= GLOBAL EVENT INITIALIZATION =================
 window.addEventListener('DOMContentLoaded', () => {
   // Resolve window type and initialize
@@ -585,6 +648,18 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('batch-select-all-btn').addEventListener('click', handleBatchSelectAll);
   document.getElementById('batch-cancel-btn').addEventListener('click', toggleBatchMode);
   document.getElementById('batch-delete-btn').addEventListener('click', handleBatchDelete);
+  
+  // Import cards
+  const importBtn = document.getElementById('import-cards-btn');
+  if (importBtn) {
+    importBtn.addEventListener('click', () => {
+      document.getElementById('import-file-input').click();
+    });
+  }
+  const importInput = document.getElementById('import-file-input');
+  if (importInput) {
+    importInput.addEventListener('change', handleImportCards);
+  }
   
   // Timer configs
   document.getElementById('timer-toggle-switch').addEventListener('change', saveTimerConfig);

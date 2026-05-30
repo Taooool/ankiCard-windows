@@ -248,6 +248,43 @@ fn delete_cards(state: State<'_, AppState>, app: AppHandle, ids: Vec<String>) ->
 }
 
 #[tauri::command]
+fn import_cards(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    new_cards: Vec<(String, String)>,
+) -> Result<usize, String> {
+    if new_cards.is_empty() {
+        return Ok(0);
+    }
+    
+    let mut inner = state.inner.lock().unwrap();
+    let mut now = Local::now().timestamp_millis();
+    let mut count = 0;
+    
+    for (front, back) in new_cards {
+        let card = Card {
+            id: now.to_string(),
+            front,
+            back,
+            memory_depth: 0,
+            popup_count: 0,
+            remember_count: 0,
+        };
+        inner.cards.push(card);
+        now += 1; // Increment timestamp to guarantee unique ID
+        count += 1;
+    }
+    
+    inner.db.save_cards(&inner.cards)?;
+    
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.emit("cards-updated", ());
+    }
+    
+    Ok(count)
+}
+
+#[tauri::command]
 fn review_card(state: State<'_, AppState>, app: AppHandle, id: String, remembered: bool) -> Result<Card, String> {
     let mut inner = state.inner.lock().unwrap();
     inner.last_reviewed_id = Some(id.clone());
@@ -464,6 +501,7 @@ pub fn run() {
             edit_card,
             delete_card,
             delete_cards,
+            import_cards,
             review_card,
             get_reminder_card,
             get_timer_config,
