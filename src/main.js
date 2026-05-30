@@ -1,20 +1,73 @@
 // ================= TAURI API IMPORT =================
+/**
+ * 导入 Tauri API 方法
+ */
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 // ================= STATE MANAGEMENT =================
+/**
+ * 缓存的全部卡片列表
+ * @type {Array<Object>}
+ */
 let allCards = [];
+
+/**
+ * 当前选中的卡片 ID
+ * @type {String|null}
+ */
 let selectedCardId = null;
-let currentSortMode = 'depth-asc'; // 'depth-asc' or 'depth-desc'
+
+/**
+ * 当前排序模式
+ * @type {'depth-asc'|'depth-desc'}
+ */
+let currentSortMode = 'depth-asc';
+
+/**
+ * 搜索关键词
+ * @type {String}
+ */
 let searchQuery = '';
+
+/**
+ * 当前正在复习的提醒卡片实体
+ * @type {Object|null}
+ */
 let currentReminderCard = null;
+
+/**
+ * 倒计时循环执行句柄 ID
+ * @type {number|null}
+ */
 let countdownTimerId = null;
+
+/**
+ * 全局配置缓存
+ * @type {Object}
+ */
 let appConfig = { is_enabled: true };
+
+/**
+ * 是否开启批量管理选择模式
+ * @type {boolean}
+ */
 let isBatchMode = false;
+
+/**
+ * 批量选择中选中的卡片 ID 集合
+ * @type {Set<String>}
+ */
 let batchSelectedIds = new Set();
+
 
 // ================= UTILITY FUNCTIONS =================
 
+/**
+ * 根据卡片记忆深度熟练度获取对应的颜色等级类名
+ * @param {number} depth 记忆深度值 (0-100)
+ * @returns {string} 样式对应的 CSS 样式类名
+ */
 function getDepthBadgeClass(depth) {
   if (depth === 0) return 'depth-0';
   if (depth < 40) return 'depth-low';
@@ -23,8 +76,15 @@ function getDepthBadgeClass(depth) {
 }
 
 // ================= ROUTER / WINDOW INIT =================
-window.currentWindowLabel = 'main'; // default fallback
+/**
+ * 缓存当前所在的窗口 Label 标识
+ * @type {string}
+ */
+window.currentWindowLabel = 'main';
 
+/**
+ * 前端路由控制逻辑，通过 HASH 或 Window Label 进行视图分发
+ */
 function handleRoute() {
   const hash = window.location.hash || '#/';
   
@@ -39,6 +99,9 @@ function handleRoute() {
   }
 }
 
+/**
+ * 初始化判断当前窗口所在的类型，防止路由闪烁
+ */
 async function initWindow() {
   try {
     const label = await invoke('get_window_label');
@@ -57,6 +120,15 @@ async function initWindow() {
 }
 
 // ================= MAIN VIEW LOGIC =================
+
+/**
+ * 获取当前排序模式下已排序的卡片克隆数组
+ * 
+ * 排序逻辑：
+ * 1. 深度相同，按 ID 倒序排列（以代替时间排序）。
+ * 2. 深度不同，按设定方向升序或降序。
+ * @returns {Array<Object>} 排序后的卡片集合
+ */
 function getSortedCards() {
   let sorted = [...allCards];
   if (currentSortMode === 'depth-asc') {
@@ -67,13 +139,16 @@ function getSortedCards() {
   return sorted;
 }
 
+/**
+ * 主界面视图的初始化动作
+ */
 async function initMainView() {
   stopCountdownTimer();
   await loadCards();
   await loadTimerConfig();
   startCountdownTimer();
   
-  // Select first card if available (top-most in sorted list)
+  // 默认选中第一条卡片
   if (allCards.length > 0 && !selectedCardId) {
     const sorted = getSortedCards();
     selectCard(sorted[0].id);
@@ -84,6 +159,9 @@ async function initMainView() {
   }
 }
 
+/**
+ * 后端调用，从本地文件系统加载卡片列表
+ */
 async function loadCards() {
   try {
     allCards = await invoke('get_cards');
@@ -93,12 +171,13 @@ async function loadCards() {
   }
 }
 
+/**
+ * 重新渲染并填充左侧侧边栏卡片列表 DOM 结构
+ */
 function renderCardsList() {
   const listEl = document.getElementById('cards-list');
-  
   listEl.innerHTML = '';
   
-  // Sort and then Filter
   const sorted = getSortedCards();
   let filtered = sorted.filter(card => {
     const q = searchQuery.toLowerCase();
@@ -144,10 +223,13 @@ function renderCardsList() {
   });
 }
 
+/**
+ * 在列表中高亮并选中单张卡片以载入详情视图
+ * @param {string} id 卡片 ID
+ */
 function selectCard(id) {
   selectedCardId = id;
   
-  // Update selection style
   document.querySelectorAll('.card-item').forEach(el => {
     if (el.dataset.id === id) {
       el.classList.add('selected');
@@ -160,6 +242,10 @@ function selectCard(id) {
   renderCardDetail(card);
 }
 
+/**
+ * 刷新并渲染右侧卡片详情区
+ * @param {Object|null} card 选定的卡片对象，若无则渲染空白提示态
+ */
 function renderCardDetail(card) {
   const emptyState = document.getElementById('empty-detail-state');
   const detailView = document.getElementById('card-detail-view');
@@ -180,13 +266,21 @@ function renderCardDetail(card) {
   document.getElementById('detail-back-text').textContent = card.back;
 }
 
-// Escape HTML utility
+/**
+ * 对 HTML 特殊符号执行安全过滤字符转义，防止 XSS 攻击
+ * @param {string} str 输入的源字符串
+ * @returns {string} 转义过滤后的安全 HTML 实体内容
+ */
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.innerText = str;
   return div.innerHTML;
 }
 
+/**
+ * 辅助函数：根据总秒数反向将配置同步设定到前端输入框及下拉框中
+ * @param {number} totalSecs 时间配置秒数
+ */
 function updateTimerUIFromSeconds(totalSecs) {
   const intervalInput = document.getElementById('timer-interval-input');
   const unitSelect = document.getElementById('timer-unit-select');
@@ -202,6 +296,10 @@ function updateTimerUIFromSeconds(totalSecs) {
 }
 
 // ================= TIMER CONTROL LOGIC =================
+
+/**
+ * 从后端加载定时器的配置数据并更新界面
+ */
 async function loadTimerConfig() {
   try {
     appConfig = await invoke('get_timer_config');
@@ -213,6 +311,9 @@ async function loadTimerConfig() {
   }
 }
 
+/**
+ * 前端配置发生变动时，收集并上传定时提醒配置参数
+ */
 async function saveTimerConfig() {
   const isEnabled = document.getElementById('timer-toggle-switch').checked;
   const val = parseInt(document.getElementById('timer-interval-input').value) || 10;
@@ -227,6 +328,9 @@ async function saveTimerConfig() {
   }
 }
 
+/**
+ * 主动拉取下一次弹窗的时间，换算并更新前端计时面板 UI 视图
+ */
 async function updateCountdownUI() {
   const isEnabled = document.getElementById('timer-toggle-switch').checked;
   const statusEl = document.getElementById('countdown-status');
@@ -239,6 +343,7 @@ async function updateCountdownUI() {
   try {
     const nextTrigger = await invoke('get_next_trigger_time');
     
+    // 挂起态处理：当前提醒窗口已开启，定时轮询休眠中
     if (nextTrigger === 0) {
       statusEl.textContent = '复习进行中...';
       return;
@@ -260,12 +365,18 @@ async function updateCountdownUI() {
   }
 }
 
+/**
+ * 启动前端的倒计时轮询计时面板
+ */
 function startCountdownTimer() {
   stopCountdownTimer();
   updateCountdownUI();
   countdownTimerId = setInterval(updateCountdownUI, 1000);
 }
 
+/**
+ * 停止前端的倒计时轮询
+ */
 function stopCountdownTimer() {
   if (countdownTimerId) {
     clearInterval(countdownTimerId);
@@ -274,6 +385,10 @@ function stopCountdownTimer() {
 }
 
 // ================= CRUD CARD MODAL LOGIC =================
+
+/**
+ * 展示用于添加新卡片的模态框
+ */
 function showAddCardModal() {
   document.getElementById('modal-title').textContent = '添加记忆卡片';
   document.getElementById('modal-card-id').value = '';
@@ -283,6 +398,10 @@ function showAddCardModal() {
   document.getElementById('card-front-input').focus();
 }
 
+/**
+ * 展示编辑现有卡片的模态框并预填充数据
+ * @param {Object} card 目标卡片实体
+ */
 function showEditCardModal(card) {
   document.getElementById('modal-title').textContent = '编辑记忆卡片';
   document.getElementById('modal-card-id').value = card.id;
@@ -292,10 +411,17 @@ function showEditCardModal(card) {
   document.getElementById('card-front-input').focus();
 }
 
+/**
+ * 关闭卡片编辑/新增弹窗模态框
+ */
 function hideCardModal() {
   document.getElementById('card-modal').classList.remove('active');
 }
 
+/**
+ * 处理模态框的提交行为，异步调用后端增加/修改接口并局部刷新列表
+ * @param {Event} e 表单 submit 拦截事件
+ */
 async function handleModalSubmit(e) {
   e.preventDefault();
   
@@ -307,10 +433,8 @@ async function handleModalSubmit(e) {
   
   try {
     if (id) {
-      // Edit
       await invoke('edit_card', { id, front, back });
     } else {
-      // Add
       await invoke('add_card', { front, back });
     }
     hideCardModal();
@@ -321,6 +445,9 @@ async function handleModalSubmit(e) {
   }
 }
 
+/**
+ * 删除当前高亮选中的单张卡片
+ */
 async function deleteSelectedCard() {
   if (!selectedCardId) return;
   
@@ -333,7 +460,6 @@ async function deleteSelectedCard() {
       selectedCardId = null;
       await loadCards();
       
-      // Select first (top-most in sorted list)
       if (allCards.length > 0) {
         const sorted = getSortedCards();
         selectCard(sorted[0].id);
@@ -347,13 +473,19 @@ async function deleteSelectedCard() {
 }
 
 // ================= REMINDER WINDOW VIEW LOGIC =================
+
+/**
+ * 唤醒并初始化复习弹窗内的信息展示
+ */
 async function initReminderView() {
-  // Clear any flips
   document.getElementById('flip-card-inner').classList.remove('flipped');
   await loadNextReminderCard();
   renderReminderCard();
 }
 
+/**
+ * 向后端请求基于加权冷却抽取算法推选的下一张卡片
+ */
 async function loadNextReminderCard() {
   try {
     currentReminderCard = await invoke('get_reminder_card');
@@ -363,22 +495,22 @@ async function loadNextReminderCard() {
   }
 }
 
+/**
+ * 前端复习弹窗组件卡片内容填充渲染
+ */
 function renderReminderCard() {
   const activeState = document.getElementById('reminder-active-state');
   const innerCard = document.getElementById('flip-card-inner');
   
-  // Reset Card flip before switching content
   innerCard.classList.remove('flipped');
   
   if (!currentReminderCard) {
-    // No cards at all — just close the window
     closeWindow();
     return;
   }
   
   activeState.classList.add('active');
   
-  // Fill details
   document.getElementById('popup-queue-badge').textContent = `共 ${allCards.length || '?'} 张`;
   document.getElementById('popup-depth-badge').textContent = `深度 ${currentReminderCard.memory_depth}%`;
   document.getElementById('popup-front-text').textContent = currentReminderCard.front;
@@ -387,27 +519,33 @@ function renderReminderCard() {
   document.getElementById('popup-back-text').textContent = currentReminderCard.back;
 }
 
+/**
+ * 模拟卡片翻转动作，翻转视角以显示答案面
+ */
 function revealAnswer() {
   document.getElementById('flip-card-inner').classList.add('flipped');
 }
 
+/**
+ * 上报卡片复习判定状态（记得/不记得），更新数据库后由后端销毁提醒窗口
+ * @param {boolean} remembered 用户是否记得当前卡片
+ */
 async function handleReviewResult(remembered) {
   if (!currentReminderCard) return;
   
   const cardId = currentReminderCard.id;
   
   try {
-    // Call Rust to update card's status
     await invoke('review_card', { id: cardId, remembered });
-    
-    // Close window immediately after reviewing one card
     await closeWindow();
   } catch (err) {
     console.error('Failed to submit review:', err);
   }
 }
 
-
+/**
+ * 调用后端主动销毁关闭当前复习窗口，通知计时器解除挂起状态重新倒计时
+ */
 async function closeWindow() {
   try {
     await invoke('close_reminder_window');
@@ -416,7 +554,17 @@ async function closeWindow() {
   }
 }
 
+
 // ================= BATCH MODE LOGIC =================
+
+/**
+ * 切换侧边栏为批量管理模式
+ * 
+ * 切换逻辑：
+ * 1. 切换 isBatchMode 状态，清空选择缓存。
+ * 2. 给 body 挂载 .batch-mode 样式类激活 CSS 联动（展示 checkbox，通过 slideUp 显示批量控制面板，隐藏定时器）。
+ * 3. 禁用/启用卡片右侧详情区的独立编辑和删除按钮，引导用户专注于勾选。
+ */
 function toggleBatchMode() {
   isBatchMode = !isBatchMode;
   batchSelectedIds.clear();
@@ -440,6 +588,10 @@ function toggleBatchMode() {
   renderCardsList();
 }
 
+/**
+ * 批量模式下切换单张卡片的勾选选中状态
+ * @param {string} id 卡片唯一标识 ID
+ */
 function toggleBatchSelect(id) {
   if (batchSelectedIds.has(id)) {
     batchSelectedIds.delete(id);
@@ -461,6 +613,9 @@ function toggleBatchSelect(id) {
   }
 }
 
+/**
+ * 更新底部批量管理操作面板的选中计数和全选按钮指示状态
+ */
 function updateBatchActionBar() {
   const countEl = document.getElementById('batch-select-count');
   if (countEl) {
@@ -480,6 +635,9 @@ function updateBatchActionBar() {
   }
 }
 
+/**
+ * 一键勾选或一键取消当前侧边栏已过滤出的全部可见卡片
+ */
 function handleBatchSelectAll() {
   const sorted = getSortedCards();
   const filtered = sorted.filter(card => {
@@ -499,6 +657,9 @@ function handleBatchSelectAll() {
   renderCardsList();
 }
 
+/**
+ * 调用后端 API，批量删除所有已勾选选中的卡片，并在成功后重置为标准单选查看模式
+ */
 async function handleBatchDelete() {
   if (batchSelectedIds.size === 0) {
     alert('请先选择要删除的卡片');
@@ -536,13 +697,24 @@ async function handleBatchDelete() {
 }
 
 // ================= IMPORT CARDS LOGIC =================
+
+/**
+ * 客户端纯文本卡片解析器
+ * 
+ * 扫描机制：
+ * 1. 利用换行符切割文本得到行数组。
+ * 2. 行循环中自动使用 trim() 过滤前置空白行。
+ * 3. 第一行捕捉为 Front 问题，紧接着的第二行捕捉为 Back 答案。
+ * 4. 之后以累加 3 行的机制跳至下一个卡片块，自动规避格式留空或在起始时由 skip 过滤不规则空白。
+ * @param {string} text 读取到的原始纯文本内容
+ * @returns {Array<Object>} 成功解析的卡片 Front/Back 集合列表
+ */
 function parseImportedCards(text) {
   const lines = text.split(/\r?\n/);
   const cards = [];
   
   let i = 0;
   while (i < lines.length) {
-    // Skip leading blank lines
     while (i < lines.length && lines[i].trim() === "") {
       i++;
     }
@@ -555,12 +727,15 @@ function parseImportedCards(text) {
       cards.push({ front, back });
     }
     
-    // Move to next block: front, back, and the trailing blank line (3 lines in total)
     i += 3;
   }
   return cards;
 }
 
+/**
+ * 监听并读取文件上传数据流，解析完毕后发起 Tauri 批量导入请求
+ * @param {Event} e 文件选择变更事件
+ */
 async function handleImportCards(e) {
   const fileInput = document.getElementById('import-file-input');
   const file = fileInput.files[0];
@@ -600,19 +775,16 @@ async function handleImportCards(e) {
 
 // ================= GLOBAL EVENT INITIALIZATION =================
 window.addEventListener('DOMContentLoaded', () => {
-  // Resolve window type and initialize
   initWindow();
   window.addEventListener('hashchange', handleRoute);
   
   // ----- MAIN VIEW EVENTS -----
   
-  // Search
   document.getElementById('search-input').addEventListener('input', (e) => {
     searchQuery = e.target.value;
     renderCardsList();
   });
   
-  // Sorting
   document.getElementById('sort-depth-asc-btn').addEventListener('click', () => {
     document.getElementById('sort-depth-asc-btn').classList.add('active');
     document.getElementById('sort-depth-desc-btn').classList.remove('active');
@@ -627,15 +799,12 @@ window.addEventListener('DOMContentLoaded', () => {
     renderCardsList();
   });
   
-  // Floating Add Button
   document.getElementById('add-card-float-btn').addEventListener('click', showAddCardModal);
   
-  // Modal buttons
   document.getElementById('close-modal-btn').addEventListener('click', hideCardModal);
   document.getElementById('modal-cancel-btn').addEventListener('click', hideCardModal);
   document.getElementById('card-form').addEventListener('submit', handleModalSubmit);
   
-  // Actions
   document.getElementById('edit-card-btn').addEventListener('click', () => {
     const card = allCards.find(c => c.id === selectedCardId);
     if (card) showEditCardModal(card);
@@ -643,13 +812,11 @@ window.addEventListener('DOMContentLoaded', () => {
   
   document.getElementById('delete-card-btn').addEventListener('click', deleteSelectedCard);
   
-  // Batch toggle buttons
   document.getElementById('batch-toggle-btn').addEventListener('click', toggleBatchMode);
   document.getElementById('batch-select-all-btn').addEventListener('click', handleBatchSelectAll);
   document.getElementById('batch-cancel-btn').addEventListener('click', toggleBatchMode);
   document.getElementById('batch-delete-btn').addEventListener('click', handleBatchDelete);
   
-  // Import cards
   const importBtn = document.getElementById('import-cards-btn');
   if (importBtn) {
     importBtn.addEventListener('click', () => {
@@ -661,7 +828,6 @@ window.addEventListener('DOMContentLoaded', () => {
     importInput.addEventListener('change', handleImportCards);
   }
   
-  // Timer configs
   document.getElementById('timer-toggle-switch').addEventListener('change', saveTimerConfig);
   document.getElementById('timer-interval-input').addEventListener('change', saveTimerConfig);
   document.getElementById('timer-unit-select').addEventListener('change', saveTimerConfig);
@@ -679,12 +845,10 @@ window.addEventListener('DOMContentLoaded', () => {
   
   // ----- LISTEN TO TAURI GLOBAL EVENTS -----
   
-  // Sync cards database updates
   listen('cards-updated', () => {
     loadCards();
   });
   
-  // Sync timer configurations
   listen('config-updated', (event) => {
     appConfig = event.payload;
     document.getElementById('timer-toggle-switch').checked = appConfig.is_enabled;
@@ -692,7 +856,6 @@ window.addEventListener('DOMContentLoaded', () => {
     updateCountdownUI();
   });
   
-  // Popup reload command from Rust
   listen('reload-card', () => {
     if (window.currentWindowLabel === 'reminder') {
       initReminderView();
