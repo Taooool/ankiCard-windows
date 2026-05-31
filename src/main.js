@@ -843,6 +843,39 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('remember-btn').addEventListener('click', () => handleReviewResult(true));
   document.getElementById('forget-btn').addEventListener('click', () => handleReviewResult(false));
   
+  // ----- POPUP WINDOW KEYDOWN SHORTCUTS -----
+  /**
+   * 监听复习弹窗内的全局键盘快捷键：
+   * - Enter (回车键)：在卡片未翻转（正面）时，触发“查看答案”翻转卡片。
+   * - ArrowLeft (左方向键)：在卡片已翻转（背面）时，触发“不记得”提交结果。
+   * - ArrowRight (右方向键)：在卡片已翻转（背面）时，触发“记得”提交结果。
+   */
+  window.addEventListener('keydown', (e) => {
+    if (window.currentWindowLabel !== 'reminder') return;
+    
+    const innerCard = document.getElementById('flip-card-inner');
+    if (!innerCard) return;
+    
+    const isFlipped = innerCard.classList.contains('flipped');
+    
+    if (e.key === 'Enter') {
+      if (!isFlipped) {
+        revealAnswer();
+        e.preventDefault();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      if (isFlipped) {
+        handleReviewResult(false);
+        e.preventDefault();
+      }
+    } else if (e.key === 'ArrowRight') {
+      if (isFlipped) {
+        handleReviewResult(true);
+        e.preventDefault();
+      }
+    }
+  });
+  
   // ----- LISTEN TO TAURI GLOBAL EVENTS -----
   
   listen('cards-updated', () => {
