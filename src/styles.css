@@ -1014,7 +1014,7 @@ button {
 }
 
 .card-flip-inner.flipped {
-  transform: rotateY(180deg);
+  transform: rotateX(180deg);
 }
 
 .card-face {
@@ -1040,7 +1040,7 @@ button {
 
 .card-face-back {
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.85) 100%);
-  transform: rotateY(180deg);
+  transform: rotateX(180deg);
   border-color: var(--border-color-hover);
 }
 
